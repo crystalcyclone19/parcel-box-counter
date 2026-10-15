@@ -1,0 +1,21 @@
+{
+  "model_name": "mlp_parcel_counter",
+  "description": "Single-layer MLP for counting parcels in 8x8 feature maps",
+  "architecture": {
+    "input_size": 64,
+    "output_size": 1,
+    "activation": "scaled_sigmoid",
+    "k": 10.0
+  },
+  "training_config": {
+    "learning_rate": 0.1,
+    "batch_size": 4,
+    "loss_fn": "MSE"
+  },
+  "version": 0,
+  "epoch": 0,
+  "last_loss": null,
+  "history": [],
+  "W": null,
+  "b": null
+}
