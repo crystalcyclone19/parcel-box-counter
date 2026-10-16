@@ -137,22 +137,50 @@ parcel-box-counter/
 
 ระบบจะรันการทดลองหลาย Configuration อัตโนมัติ (Automated Hyperparameter Grid / Random Search):
 
-#### พารามิเตอร์ที่สำรวจ (Search Space Example):
-| Parameter Group | Hyperparameter | ช่วงค่าที่ทดสอบ (Candidates) |
-|---|---|---|
-| **Preprocessing** | `blur_ksize` | `[3, 5, 7]` |
-| | `clip_percentile` | `[95.0, 98.0, 99.0]` |
-| | `n_svd_features` | `[64]` (Flattened 8×8 Matrix) |
-| **Model & Optimizer** | `learning_rate` | `[0.001, 0.005, 0.01, 0.05, 0.1]` |
-| | `k` (Scaled Sigmoid Max) | `[10.0, 15.0, 20.0]` (ขึ้นกับจำนวนกล่องสูงสุดที่คาดหวัง) |
-| | `epochs` | `[100, 300, 500]` (พร้อม Early Stopping) |
-| | `batch_size` | `[4, 8, 16, 32]` หรือ Full Batch |
-| | `weight_init` | `["zeros", "gaussian_0.01", "xavier"]` |
+#### 1. พารามิเตอร์สำหรับทดสอบเพื่อค้นหาโมเดลที่ดีที่สุด (Tuning Search Space):
+| Parameter Group | Hyperparameter | ช่วงค่าที่ทดสอบ (Candidates) | จำนวนค่า | เหตุผลในการค้นหา |
+|---|---|---|:---:|---|
+| **Preprocessing** | `clip_percentile` | `[95.0, 98.0, 99.0]` | 3 | กรอง Noise และควบคุมความเข้มของเส้นขอบกล่องก่อนทำ SVD |
+| **Model & Optimizer** | `learning_rate` | `[0.001, 0.005, 0.01, 0.05, 0.1]` | 5 | ควบคุมความเร็วและเสถียรภาพในการลู่เข้าสู่จุดต่ำสุด (Convergence) |
+| | `batch_size` | `[4, 8, 16, 32]` | 4 | สมดุลระหว่าง Gradient Noise กับเสถียรภาพในการอัปเดตน้ำหนัก |
 
-#### กลไก Early Stopping & Checkpointing:
-* ในแต่ละ Trial จะติดตามค่า **Validation Loss (MSE)** ทุกๆ Epoch
-* หาก Validation Loss ไม่ลดลงต่อเนื่องเกิน `patience` (เช่น 15 epochs) ระบบจะหยุดเทรน Trial นั้นทันทีเพื่อประหยัดเวลา
-* บันทึก Weights ที่จุดที่ได้ Validation Loss ต่ำที่สุดของ Trial นั้น (Best Epoch Weights)
+> **จำนวน Configuration ทั้งหมด**: $3 \times 5 \times 4 = 60\text{ Trials}$ (แบบ Full Grid Search)
+
+#### 2. พารามิเตอร์คงที่ที่กำหนดไว้ล่วงหน้า (Fixed & Pre-determined Parameters):
+| Parameter Group | Parameter | ค่าที่กำหนด | เหตุผลที่กำหนดเป็นค่าคงที่ |
+|---|---|:---:|---|
+| **Feature Extraction** | `n_svd_features` | **`64`** | ขนาด $8 \times 8$ มิติ ฟิกซ์ไว้โดยเจ้าของระบบเพื่อให้สอดคล้องกับ Input Layer ของ MLP Architecture |
+| **Architecture** | `k` (Scaled Sigmoid Max) | **`10.0`** *(หรือตามที่เจ้าของกำหนด)* | กำหนดไว้แต่แรกตามเพดานจำนวนกล่องสูงสุดที่คาดหวังในโดเมนปัญหา |
+| | `weight_init` | **`"xavier"`** | ใช้วิธี Xavier/Glorot Normal Initialization ตลอดการทดลองเพื่อป้องกัน Vanishing/Exploding Gradient |
+| **Preprocessing** | `blur_ksize` | **`5`** | Kernel ขนาด $5 \times 5$ ถูกกำหนดเป็นมาตรฐานในการลด Noise จากขั้นตอนทดสอบ |
+| **Training Budget** | `epochs` | **`500`** | กำหนดรอบการเทรนสูงสุดไว้ที่ 500 Epochs ตลอดการทดลอง (มี Early Stopping กำกับ) |
+
+#### 3. กลไก Early Stopping & Checkpointing:
+* ในแต่ละ Trial ระบบจะติดตามค่า **Validation Loss (MSE)** ในทุกๆ Epoch
+* หาก Validation Loss ไม่ลดลงต่อเนื่องเกิน `patience` (เช่น 25 - 50 epochs) ระบบจะหยุดเทรน Trial นั้นก่อนครบ 500 epochs เพื่อประหยัดเวลา
+* บันทึก Weights ที่จุดที่ได้ Validation Loss ต่ำที่สุดของแต่ละ Trial (Best Epoch Checkpoint)
+
+---
+
+### การประเมินระยะเวลาการเทรนบน Google Colab (Free Tier Environment)
+
+สเปกของ Google Colab ตัวฟรี (Standard Runtime):
+* **CPU**: Intel Xeon @ 2.20GHz / 2.30GHz (2 vCPUs)
+* **RAM**: 12.7 GB
+* **GPU (ถ้าเปิดใช้ T4)**: 16 GB VRAM *(หมายเหตุ: โค้ดนี้ใช้ NumPy CPU ก็เร็วมากแล้ว)*
+
+#### ตารางประเมินเวลาแยกตามขั้นตอน (Dataset ขนาด ~100 - 150 ภาพ):
+
+| ลำดับขั้นตอน | งานที่ประมวลผล | การคำนวณ | เวลาที่ประเมิน (Colab Free) |
+|:---:|---|---|:---:|
+| **1. Feature Extraction (Cache)** | ดึงภาพ $\rightarrow$ Gray $\rightarrow$ Resize $\rightarrow$ Blur $\rightarrow$ Laplacian $\rightarrow$ Percentile Clip $\rightarrow$ SVD | ทำเพียง **3 ครั้ง** สำหรับแต่ละค่า `clip_percentile` ($95.0, 98.0, 99.0$) แล้วบันทึก Cache เป็น Matrix $Z \in \mathbb{R}^{N \times 64}$ | **~45 - 90 วินาที** |
+| **2. Grid Search MLP Training** | เทรน 60 Trials × 500 Epochs (NumPy Vectorized Single-layer/MLP ขนาด Input 64) | - คำนวณ Vectorized ต่อ Epoch: $< 0.5\text{ ms}$<br>- ต่อ 1 Trial (500 epochs): $\approx 0.25 - 0.40\text{ วินาที}$<br>- ทั้งหมด 60 Trials: $60 \times 0.35\text{s} \approx 21\text{ วินาที}$<br>*(หากมี Early Stopping จะลดเหลือ ~10 - 15 วินาที)* | **~20 - 45 วินาที** |
+| **3. Evaluation & Packaging** | ประเมินผลบน Test Set, คำนวณ MAE/MSE, บันทึก Leaderboard และเซฟ Best Model Bundle | คำนวณเมทริกซ์และเขียนไฟล์ JSON/NPZ | **~5 - 10 วินาที** |
+| **รวมระยะเวลาทั้งหมด** | **ตั้งแต่เริ่มรันจนได้ Champion Model สมบูรณ์** | **ทุกขั้นตอนจบในคำสั่งเดียว** | **ประมาณ 1.5 - 3 นาที** *(ไม่เกิน 5 นาที)* |
+
+> [!TIP]
+> **สรุปความพร้อมใช้งานบน Colab Free**:
+> สภาพแวดล้อม Colab Free อนุญาตให้รันต่อเนื่องได้สูงสุด 12 ชั่วโมง (และตัดการเชื่อมต่อหาก Idle เกิน 90 นาที) การรัน Pipeline นี้ใช้เวลาเพียง **~2 - 3 นาที** เท่านั้น จึงสามารถรันได้อย่างเสถียร ราบรื่น ไม่ติดขัดเรื่องโควตา Compute Units (Colab Units) และไม่ต้องกังวลเรื่อง Timeout เลย
 
 ---
 
@@ -192,8 +220,8 @@ python model/run_auto_train.py \
     --images-dir dataset/boxes \
     --labels dataset/labels.csv \
     --search-strategy grid \
-    --epochs 300 \
-    --patience 15 \
+    --epochs 500 \
+    --patience 25 \
     --metric val_loss \
     --export-best artifacts/best_model
 ```
@@ -211,12 +239,12 @@ python model/run_auto_train.py \
 [Stage 2] Running Preprocessing & SVD on Train Set...
   SVD fitted successfully (Output feature dim: 64)
 
-[Stage 3] Hyperparameter Search (Total 12 Trials)...
-  Trial 01/12 | LR=0.010, k=10, blur=5 | Val MSE: 0.2415 | Val MAE: 0.38
-  Trial 02/12 | LR=0.005, k=10, blur=5 | Val MSE: 0.1820 | Val MAE: 0.31
-  Trial 03/12 | LR=0.001, k=10, blur=5 | Val MSE: 0.3540 | Val MAE: 0.49
+[Stage 3] Hyperparameter Search (Total 60 Trials | Epochs: 500)...
+  Trial 01/60 | Clip=95.0, LR=0.001, Batch=4  | Val MSE: 0.2415 | Val MAE: 0.38
+  Trial 02/60 | Clip=95.0, LR=0.005, Batch=8  | Val MSE: 0.1820 | Val MAE: 0.31
+  Trial 03/60 | Clip=98.0, LR=0.010, Batch=16 | Val MSE: 0.1150 | Val MAE: 0.22 (New Best!)
   ...
-  Trial 12/12 | LR=0.020, k=12, blur=5 | Val MSE: 0.1250 | Val MAE: 0.24 (New Best!)
+  Trial 60/60 | Clip=99.0, LR=0.100, Batch=32 | Val MSE: 0.1640 | Val MAE: 0.28
 
 ======================================================================
   SELECTION SUMMARY & TEST SET VERIFICATION
