@@ -3,11 +3,12 @@
 โมดูลรวมกระบวนการประมวลผลรูปภาพ (Pipeline Orchestrator)
 
 ไฟล์นี้ทำหน้าที่เป็นตัวประสาน (Orchestrator) และรวบรวมองค์ประกอบของ Pipeline 
-ที่ถูกแยกออกเป็นโมดูลย่อยตาม documents/model_training_pipeline.md:
-  1. Data Ingestion & Image Reading                  → data_ingestion.py
-  2. Geometric Transformation                        → geometric_transform.py
-  3. Grayscale, Resizing, Gaussian Blur & Edge Map   → edge_processing.py
-  4. SVD Feature Extraction                          → svd_features.py
+ตามข้อกำหนดใน documents/model_training_pipeline.md:
+  1. Data Ingestion & Pre-transformation             → data_ingestion.py
+     (ภาพถูกทำ Geometric Transformation มาแล้วตั้งแต่ขั้นตอนนำเข้าข้อมูลโดยผู้เตรียมข้อมูล)
+  2. Grayscale, Resizing, Gaussian Blur & Edge Map   → edge_processing.py
+  3. SVD Feature Extraction                          → svd_features.py
+  * geometric_transform.py เป็นโมดูลเครื่องมืออิสระและสำหรับใช้งานบน Web App
 """
 
 from __future__ import annotations
@@ -80,26 +81,24 @@ def process_images(
     resize_target: Tuple[int, int] | int = RESIZE_TARGET,
     blur_ksize: int = BLUR_KSIZE,
     clip_percentile: float = CLIP_PERCENTILE,
-    apply_transform: bool = False,
     save_intermediate: bool = True,
     save_viz: bool = True,
+    **kwargs,
 ) -> List[Tuple[str, Path]]:
     """รันกระบวนการประมวลผลรูปภาพแบบ End-to-End
-    (Optional Transform) → Grayscale → Resize → Gaussian Blur → Edge Convolution → บันทึก → Visualize
+    Input RGB (Pre-transformed by Ingestion) → Grayscale → Resize → Gaussian Blur → Edge Convolution → บันทึก → Visualize
 
     หมายเหตุ:
-      ในกระบวนการเทรนโมเดลจริง ค่าเริ่มต้น apply_transform=False เพราะภาพแต่ละภาพได้รับการ
-      Crop / จัดตำแหน่งล่วงหน้าโดยผู้นำเข้าข้อมูลเรียบร้อยแล้ว ส่วนการทำ Transform จะนำไปใช้
-      ในระบบ Web Application ให้ผู้ใช้งานปรับแต่งบนหน้าเว็บก่อนส่งมาทำนาย
+      ขั้นตอน Geometric Transformation ได้ถูกย้ายไปดำเนินการตั้งแต่ขั้นตอนการนำเข้าข้อมูล
+      (Pre-transformed / Pre-aligned by Data Ingestor) ภาพที่ส่งเข้ามาใน Pipeline นี้จึงพร้อมสำหรับ
+      Grayscale, Resizing, Blur, และ Edge Convolution โดยตรง
 
     Parameters
     ----------
-    image_paths       : รายการ Path ของรูปภาพต้นฉบับ
+    image_paths       : รายการ Path ของรูปภาพที่ผ่านการนำเข้าและจัดตำแหน่งแล้ว
     resize_target     : ขนาดที่ต้องการย่อภาพ (width, height) เพื่อความเหมาะสมกับ Kernel 3x3
     blur_ksize        : ขนาด Gaussian blur kernel เพื่อลด Noise (เช่น 5)
     clip_percentile   : เปอร์เซ็นไทล์สำหรับตัด Outlier ใน Edge Map (เช่น 98.0)
-    apply_transform   : False = ข้าม Transform (ภาพถูกจัดตำแหน่งมาแล้วโดยผู้นำเข้าข้อมูล),
-                        True = รัน transform_image (เลื่อน/ขยาย/หมุน)
     save_intermediate : True = บันทึกไฟล์ภาพของแต่ละขั้นตอน (Resized, Blurred)
     save_viz          : True = บันทึกภาพ Visualization รวมทุกขั้นตอนลง pipeline_visualizations/
 
@@ -126,15 +125,10 @@ def process_images(
             print(f"[SKIP] อ่านรูปไม่ได้/รูปว่าง: {path.name}")
             continue
 
-        # ── Step 1: Geometric Transform (ข้ามในระบบเทรนจริง โดยทำโดยผู้นำเข้าข้อมูล) ──
-        if apply_transform:
-            transformed = transform_image(bgr)
-        else:
-            transformed = bgr
-
-        # ── Step 2-5: Grayscale, Resize, Blur, Edge Convolution ──────
+        # ── Step 1-4: Grayscale, Resize, Blur, Edge Convolution ──────
+        # (ภาพ bgr ผ่านการทำ Geometric Transformation มาแล้วตั้งแต่ขั้นตอนนำเข้าข้อมูล)
         gray, resized, blurred, edge_map = process_image_edges(
-            transformed,
+            bgr,
             resize_target=resize_target,
             blur_ksize=blur_ksize,
             clip_percentile=clip_percentile,
@@ -159,15 +153,13 @@ def process_images(
 
         processed.append((path.name, gray_path))
         _maybe_visualize(
-            original_bgr=bgr,
-            transformed_bgr=transformed,
+            input_bgr=bgr,
             gray=gray,
             resized=resized,
             blurred=blurred,
             edge_map=edge_map,
             title=path.name,
             count=len(processed),
-            apply_transform=apply_transform,
             save_dir=viz_dir,
         )
 
@@ -176,33 +168,28 @@ def process_images(
 
 
 def _maybe_visualize(
-    original_bgr: np.ndarray,
-    transformed_bgr: np.ndarray,
+    input_bgr: np.ndarray,
     gray: np.ndarray,
     resized: np.ndarray,
     blurred: np.ndarray,
     edge_map: np.ndarray,
     title: str,
     count: int,
-    apply_transform: bool = False,
     save_dir: Optional[Path] = None,
 ) -> None:
-    """แสดงกราฟและบันทึกภาพผลลัพธ์ทุกขั้นตอนใน pipeline แบบ side-by-side (6 คอลัมน์)"""
+    """แสดงกราฟและบันทึกภาพผลลัพธ์ทุกขั้นตอนใน pipeline แบบ side-by-side (5 คอลัมน์)"""
     if MAX_PLOTS is not None and count > MAX_PLOTS:
         return
 
-    fig, axes = plt.subplots(1, 6, figsize=(22, 4))
+    fig, axes = plt.subplots(1, 5, figsize=(19, 4))
     fig.patch.set_facecolor("#0b0f19")
 
-    transform_title = "② Transformed\n(Opt-in)" if apply_transform else "② Pre-aligned\n(Ingestor / As-is)"
-
     steps = [
-        (cv2.cvtColor(original_bgr, cv2.COLOR_BGR2RGB), "① Original RGB", None, "#4fc3f7"),
-        (cv2.cvtColor(transformed_bgr, cv2.COLOR_BGR2RGB), transform_title, None, "#81c995"),
-        (gray, "③ Grayscale", "gray", "#ffb74d"),
-        (resized, f"④ Resized\n({resized.shape[1]}×{resized.shape[0]})", "gray", "#a78bfa"),
-        (blurred, f"⑤ Gaussian Blur\n(K={BLUR_KSIZE})", "gray", "#38bdf8"),
-        (edge_map, "⑥ Edge Map\n(Laplacian)", "inferno", "#f48fb1"),
+        (cv2.cvtColor(input_bgr, cv2.COLOR_BGR2RGB), "① Input RGB\n(Pre-transformed)", None, "#4fc3f7"),
+        (gray, "② Grayscale", "gray", "#ffb74d"),
+        (resized, f"③ Resized\n({resized.shape[1]}×{resized.shape[0]})", "gray", "#a78bfa"),
+        (blurred, f"④ Gaussian Blur\n(K={BLUR_KSIZE})", "gray", "#38bdf8"),
+        (edge_map, "⑤ Edge Map\n(Laplacian)", "inferno", "#f48fb1"),
     ]
 
     for ax, (img, step_title, cmap, border_color) in zip(axes, steps):

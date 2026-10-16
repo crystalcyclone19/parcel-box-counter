@@ -1,7 +1,13 @@
 # data_ingestion.py — Data Ingestion & Image Reading
 """
-ส่วนที่ 1: การนำเข้าข้อมูลและการอ่านรูปภาพ (Data Ingestion & Image Reading)
+ส่วนที่ 1: การนำเข้าข้อมูลและการอ่านรูปภาพ (Data Ingestion & Geometric Pre-transformation)
 ตามข้อกำหนดใน documents/model_training_pipeline.md (ขั้นตอนที่ 2)
+
+หมายเหตุ:
+  ขั้นตอน Geometric Transformation (Translation, Scaling, Rotation, Cropping) 
+  ถูกย้ายมาดำเนินการตั้งแต่ขั้นตอนการเตรียมและนำเข้าข้อมูล โดยผู้นำเข้าข้อมูล
+  (Data Ingestor / Ingestion Specialist) จะทำการจัดตำแหน่งและ crop ภาพมาให้เรียบร้อย
+  ก่อนนำเข้าสู่ระบบ เพื่อให้แต่ละภาพมีความเหมาะสมกับสภาพแวดล้อมเฉพาะตัวของภาพนั้นๆ
 """
 
 from __future__ import annotations

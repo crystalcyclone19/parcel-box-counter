@@ -20,17 +20,16 @@
 ```mermaid
 flowchart TD
     subgraph S1["Stage 1: Ingestion & Dataset Preparation"]
-        A["Raw Images + Labels (CSV/JSON/Folder)"] --> B["Pre-alignment / Manual Transform by Data Ingestor"]
+        A["Raw Images + Labels (CSV/JSON/Folder)"] --> B["Data Ingestion & Geometric Pre-transformation (ทำมาตั้งแต่ก่อนนำข้อมูลเข้า)"]
         B --> C["Data Validation & Dataset Pairing"]
         C --> D["Train / Validation / Test Split (e.g. 70/15/15)"]
     end
 
     subgraph S2["Stage 2: Modular Preprocessing Pipeline (Training Mode)"]
-        D --> E["Images Pre-aligned by Ingestor (Static Transform Bypassed)"]
-        E --> F["Grayscale + Downscale (512x512) + Gaussian Blur (5x5)"]
-        F --> G["Edge Convolution (Laplacian 3x3 + Percentile Clip)"]
-        G --> H["Fit SVD on Train Set (128x128 -> Centering -> SVD)"]
-        H --> I["Transform Train / Val / Test -> 8x8 Feature Matrices (64-dim)"]
+        D --> E["Grayscale + Downscale (512x512) + Gaussian Blur (5x5)"]
+        E --> F["Edge Convolution (Laplacian 3x3 + Percentile Clip)"]
+        F --> G["Fit SVD on Train Set (128x128 -> Centering -> SVD)"]
+        G --> H["Transform Train / Val / Test -> 8x8 Feature Matrices (64-dim)"]
     end
 
     subgraph S3["Stage 3: Automated Multi-Model Training Engine"]
