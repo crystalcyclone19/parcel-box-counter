@@ -136,12 +136,27 @@ def transform_image(bgr: np.ndarray) -> np.ndarray:
     return rotated
 
 
-def create_edge_map(gray: np.ndarray) -> np.ndarray:
-    """ใช้ Laplacian-style edge kernel → คืน edge map (uint8, 0-255)"""
-    response   = cv2.filter2D(gray.astype(np.float32), cv2.CV_32F, EDGE_KERNEL)
-    absolute   = np.abs(response)
-    normalized = cv2.normalize(absolute, None, 0, 255, cv2.NORM_MINMAX)
-    return normalized.astype(np.uint8)
+# def create_edge_map(gray: np.ndarray) -> np.ndarray:
+#     """ใช้ Laplacian-style edge kernel → คืน edge map (uint8, 0-255)"""
+#     response   = cv2.filter2D(gray.astype(np.float32), cv2.CV_32F, EDGE_KERNEL)
+#     absolute   = np.abs(response)
+#     normalized = cv2.normalize(absolute, None, 0, 255, cv2.NORM_MINMAX)
+#     return normalized.astype(np.uint8)
+
+def create_edge_map(gray: np.ndarray, clip_percentile: float = 98.0) -> np.ndarray:
+    """ใช้ Laplacian-style edge kernel พร้อม Percentile Clipping เพื่อให้เส้นขอบสว่างชัด"""
+    response = cv2.filter2D(gray.astype(np.float32), cv2.CV_32F, EDGE_KERNEL)
+    absolute = np.abs(response)
+    
+    # ตัด Outlier ที่เปอร์เซ็นไทล์ที่ 98 เพื่อไม่ให้จุดสะท้อนแสงดึงสเกลภาพให้มืด
+    p_high = np.percentile(absolute, clip_percentile)
+    if p_high > 1e-5:
+        scaled = (absolute / p_high) * 255.0
+    else:
+        scaled = absolute
+        
+    return np.clip(scaled, 0, 255).astype(np.uint8)
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
