@@ -1,5 +1,5 @@
 
 dataset/
 __pycache__/
-compare_edge_detectors.py
+_compare_edge_detectors.py
 documents/

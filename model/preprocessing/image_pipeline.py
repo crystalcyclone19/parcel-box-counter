@@ -1,4 +1,4 @@
-﻿# image_pipeline.py — Upload, Image Transform, Grayscale, Convolution, Visualize
+# image_pipeline.py — Upload, Image Transform, Grayscale, Convolution, Visualize
 import shutil
 import zipfile
 import tempfile
@@ -143,18 +143,128 @@ def transform_image(bgr: np.ndarray) -> np.ndarray:
 #     normalized = cv2.normalize(absolute, None, 0, 255, cv2.NORM_MINMAX)
 #     return normalized.astype(np.uint8)
 
-def create_edge_map(gray: np.ndarray, clip_percentile: float = 98.0) -> np.ndarray:
-    """ใช้ Laplacian-style edge kernel พร้อม Percentile Clipping เพื่อให้เส้นขอบสว่างชัด"""
-    response = cv2.filter2D(gray.astype(np.float32), cv2.CV_32F, EDGE_KERNEL)
+# ─────────────────────────────────────────────────────────────────────────────
+# Noise Reduction and Preprocessing Utilities
+# ─────────────────────────────────────────────────────────────────────────────
+
+def apply_gaussian_blur(
+    image: np.ndarray,
+    kernel_size: tuple[int, int] | int = (5, 5),
+    sigma_x: float = 0.0,
+    sigma_y: float = 0.0,
+) -> np.ndarray:
+    """ลด Noise และสัญญาณรบกวนความถี่สูงด้วย Gaussian Blur ก่อนส่งเข้า Edge Detector
+
+    Parameters
+    ----------
+    image       : np.ndarray
+        ภาพนำเข้า (รองรับทั้ง Grayscale 2D หรือ BGR 3D uint8)
+    kernel_size : tuple[int, int] หรือ int, default=(5, 5)
+        ขนาดของ Gaussian kernel (ต้องเป็นเลขคี่บวก เช่น 3, 5, 7, 9)
+        หากส่งเป็นจำนวนเต็มเดี่ยว เช่น 5 จะแปลงเป็น (5, 5) ให้อัตโนมัติ
+    sigma_x     : float, default=0.0
+        Gaussian standard deviation ในแนวแกน X
+        หากตั้งเป็น 0.0 OpenCV จะคำนวณจากขนาด kernel ให้อัตโนมัติ
+    sigma_y     : float, default=0.0
+        Gaussian standard deviation ในแนวแกน Y
+        หากตั้งเป็น 0.0 จะใช้ค่าเดียวกับ sigma_x
+
+    Returns
+    -------
+    blurred : np.ndarray
+        ภาพที่ผ่านการกรองลดสัญญาณรบกวนแล้ว
+    """
+    if isinstance(kernel_size, int):
+        ksize = (kernel_size, kernel_size)
+    else:
+        ksize = kernel_size
+
+    # ปรับให้เป็นเลขคี่และอย่างน้อย 1 พิกเซล
+    kx = ksize[0] if ksize[0] % 2 != 0 else ksize[0] + 1
+    ky = ksize[1] if ksize[1] % 2 != 0 else ksize[1] + 1
+    ksize = (max(1, kx), max(1, ky))
+
+    return cv2.GaussianBlur(image, ksize, sigmaX=sigma_x, sigmaY=sigma_y)
+
+
+def resize_image(
+    image: np.ndarray,
+    target_size: tuple[int, int] | int = (512, 512),
+    keep_aspect_ratio: bool = False,
+    interpolation: int = cv2.INTER_AREA,
+) -> np.ndarray:
+    """ลดขนาดความละเอียดของภาพ (Downscale) เพื่อลด Micro-noise และปรับสเกลขอบให้เหมาะกับ Kernel 3x3
+
+    Parameters
+    ----------
+    image             : np.ndarray
+        ภาพนำเข้า (Grayscale หรือ BGR)
+    target_size       : tuple[int, int] หรือ int, default=(512, 512)
+        ขนาดปลายทาง (width, height) ในหน่วยพิกเซล
+        หากส่งเป็นจำนวนเต็มเดี่ยว เช่น 512 จะหมายถึง (512, 512)
+    keep_aspect_ratio : bool, default=False
+        True  = รักษาสัดส่วนภาพเดิม (คำนวณความกว้าง/ยาวใหม่โดยยึดด้านยาวสุดไม่เกิน target_size)
+        False = ย่อ/ขยายตาม target_size โดยตรง
+    interpolation     : int, default=cv2.INTER_AREA
+        วิธี Interpolation สำหรับการย่อภาพ แนะนำ cv2.INTER_AREA สำหรับการ Downsampling เพื่อลด Moire effect และ noise
+
+    Returns
+    -------
+    resized : np.ndarray
+        ภาพที่ถูกลดขนาดความละเอียดแล้ว
+    """
+    h, w = image.shape[:2]
+
+    if isinstance(target_size, int):
+        target_w, target_h = target_size, target_size
+    else:
+        target_w, target_h = target_size
+
+    if keep_aspect_ratio:
+        scale = min(target_w / w, target_h / h)
+        new_w = max(1, int(w * scale))
+        new_h = max(1, int(h * scale))
+        dsize = (new_w, new_h)
+    else:
+        dsize = (target_w, target_h)
+
+    return cv2.resize(image, dsize, interpolation=interpolation)
+
+
+def create_edge_map(
+    gray: np.ndarray,
+    clip_percentile: float = 98.0,
+    blur_ksize: int = 0,
+) -> np.ndarray:
+    """ใช้ Laplacian-style edge kernel พร้อม Percentile Clipping และ Gaussian Blur เพื่อลด Noise
+
+    Parameters
+    ----------
+    gray            : np.ndarray
+        ภาพ Grayscale (2D uint8)
+    clip_percentile : float, default=98.0
+        เปอร์เซ็นไทล์สำหรับตัด Outlier ความสว่าง
+    blur_ksize      : int, default=0
+        ขนาด Gaussian blur kernel (0 = ไม่เบลอ, เช่น 3 หรือ 5 สำหรับตัด noise ก่อนทำ edge)
+
+    Returns
+    -------
+    edge_map : np.ndarray (uint8, 0-255)
+    """
+    src = gray
+    if blur_ksize > 1:
+        src = apply_gaussian_blur(src, kernel_size=blur_ksize)
+
+    response = cv2.filter2D(src.astype(np.float32), cv2.CV_32F, EDGE_KERNEL)
     absolute = np.abs(response)
-    
-    # ตัด Outlier ที่เปอร์เซ็นไทล์ที่ 98 เพื่อไม่ให้จุดสะท้อนแสงดึงสเกลภาพให้มืด
+
+    # ตัด Outlier ที่เปอร์เซ็นไทล์ที่กำหนด เพื่อไม่ให้จุดสะท้อนแสงดึงสเกลภาพให้มืด
     p_high = np.percentile(absolute, clip_percentile)
     if p_high > 1e-5:
         scaled = (absolute / p_high) * 255.0
     else:
         scaled = absolute
-        
+
     return np.clip(scaled, 0, 255).astype(np.uint8)
 
 

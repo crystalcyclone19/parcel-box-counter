@@ -1,4 +1,4 @@
-﻿"""
+"""
 test_preprocessing.py
 Unit tests สำหรับ image_pipeline และ svd_features
 (ไม่เกี่ยวข้องกับ mlp_regression)
@@ -10,6 +10,10 @@ import sys
 import types
 import importlib
 from pathlib import Path
+
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
 import cv2
 import numpy as np
@@ -50,6 +54,9 @@ def tmp_dirs(tmp_path, monkeypatch):
         _cfg, "ALL_DIRS",
         tuple(dirs[k] for k in ("INPUT_DIR", "GRAY_DIR", "CONV_DIR", "SVD_DIR", "MATRIX_DIR")),
     )
+    # ป้องกันไม่ให้ process_images เด้ง GUI popup ค้างระหว่าง test
+    monkeypatch.setattr(_cfg, "MAX_PLOTS", 0)
+    monkeypatch.setattr(plt, "show", lambda *args, **kwargs: None)
 
     # โหลดใหม่เพื่อให้ module ใช้ค่าจาก config ที่แพตช์แล้ว
     import image_pipeline as ip
@@ -137,6 +144,50 @@ class TestCreateEdgeMap:
         uniform = np.full((50, 50), 128, dtype=np.uint8)
         result = create_edge_map(uniform)
         assert result.max() == 0, "ภาพสีเดียวกันไม่ควรมี edge"
+
+    def test_edge_map_with_blur(self, sample_gray):
+        """ทดสอบ create_edge_map พร้อม blur_ksize"""
+        from image_pipeline import create_edge_map
+        result = create_edge_map(sample_gray, blur_ksize=5)
+        assert result.shape == sample_gray.shape
+        assert result.dtype == np.uint8
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Tests: image_pipeline — apply_gaussian_blur & resize_image
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestGaussianBlur:
+
+    def test_output_shape_and_dtype(self, sample_gray):
+        from image_pipeline import apply_gaussian_blur
+        blurred = apply_gaussian_blur(sample_gray, kernel_size=5)
+        assert blurred.shape == sample_gray.shape
+        assert blurred.dtype == np.uint8
+
+    def test_reduces_noise(self):
+        """Gaussian Blur ต้องลดความแปรปรวนของ noise ลง"""
+        from image_pipeline import apply_gaussian_blur
+        np.random.seed(42)
+        noisy = np.random.randint(0, 256, (100, 100), dtype=np.uint8)
+        blurred = apply_gaussian_blur(noisy, kernel_size=7)
+        assert blurred.std() < noisy.std()
+
+
+class TestResizeImage:
+
+    def test_fixed_resize(self, sample_gray):
+        from image_pipeline import resize_image
+        resized = resize_image(sample_gray, target_size=(50, 60))
+        assert resized.shape == (60, 50)  # height=60, width=50
+        assert resized.dtype == np.uint8
+
+    def test_aspect_ratio_resize(self):
+        from image_pipeline import resize_image
+        img = np.zeros((200, 100), dtype=np.uint8)  # height=200, width=100 (aspect 1:2)
+        resized = resize_image(img, target_size=(100, 100), keep_aspect_ratio=True)
+        # ด้านยาวสุดคือ height=200 -> ปรับเหลือ 100, width -> เหลือ 50
+        assert resized.shape == (100, 50)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
