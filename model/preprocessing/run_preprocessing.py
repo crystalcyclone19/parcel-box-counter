@@ -68,12 +68,20 @@ from config import (
     TRANSLATE_X, TRANSLATE_Y, SCALE_FACTOR, ROTATION_DEG,
     RESIZE_TARGET, BLUR_KSIZE, CLIP_PERCENTILE,
 )
-from image_pipeline import (
-    transform_image,
+from data_ingestion import (
+    load_from_local_paths,
+    load_from_zip_path,
+    upload_zip,
+    upload_images,
+    read_image,
+    collect_image_paths,
+)
+from geometric_transform import transform_image
+from edge_processing import (
+    to_grayscale,
     resize_image,
     apply_gaussian_blur,
     create_edge_map,
-    _collect_image_paths,
 )
 
 
@@ -91,133 +99,17 @@ def setup_directories() -> None:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ── ส่วนที่ 2: รับ input รูปภาพ
+# ── ส่วนที่ 2: Wrapper สำหรับ Colab Input
 # ══════════════════════════════════════════════════════════════════════════════
-
-def load_from_local_paths(paths: list[str]) -> list[Path]:
-    """
-    รับ path แบบ local (โฟลเดอร์, .zip, หรือไฟล์รูปภาพ) → คัดลอกลง INPUT_DIR
-
-    Parameters
-    ----------
-    paths : รายการ path ที่ผู้ใช้ระบุ
-
-    Returns
-    -------
-    รายการ Path รูปภาพทั้งหมดใน INPUT_DIR
-    """
-    print("=" * 60)
-    print("ขั้นตอนที่ 1 : รับ Input รูปภาพ")
-    print("=" * 60)
-
-    copied = 0
-    for raw in paths:
-        p = Path(raw).resolve()
-
-        if not p.exists():
-            print(f"  [WARN] ไม่พบ path: {p}")
-            continue
-
-        # กรณี: โฟลเดอร์
-        if p.is_dir():
-            print(f"  📁 สแกนโฟลเดอร์: {p}")
-            for img_path in p.rglob("*"):
-                if img_path.is_file() and img_path.suffix.lower() in SUPPORTED_EXTENSIONS:
-                    dest = cfg.INPUT_DIR / img_path.name
-                    shutil.copy2(img_path, dest)
-                    copied += 1
-                    print(f"     คัดลอก: {img_path.name}")
-
-        # กรณี: .zip
-        elif p.suffix.lower() == ".zip":
-            print(f"  📦 แตกไฟล์ zip: {p.name}")
-            with tempfile.TemporaryDirectory() as tmp:
-                with zipfile.ZipFile(p, "r") as zf:
-                    zf.extractall(tmp)
-                for img_path in Path(tmp).rglob("*"):
-                    if img_path.is_file() and img_path.suffix.lower() in SUPPORTED_EXTENSIONS:
-                        dest = cfg.INPUT_DIR / img_path.name
-                        shutil.copy2(img_path, dest)
-                        copied += 1
-                        print(f"     คัดลอก: {img_path.name}")
-
-        # กรณี: ไฟล์รูปภาพเดี่ยว
-        elif p.is_file() and p.suffix.lower() in SUPPORTED_EXTENSIONS:
-            dest = cfg.INPUT_DIR / p.name
-            shutil.copy2(p, dest)
-            copied += 1
-            print(f"  🖼  คัดลอก: {p.name}")
-
-        else:
-            print(f"  [SKIP] ไม่รองรับประเภทไฟล์: {p.name}")
-
-    print(f"\n  → นำเข้ารูปภาพสำเร็จ {copied} ไฟล์ → {cfg.INPUT_DIR}\n")
-
-    image_paths = _collect_image_paths()
-    if not image_paths:
-        print("[ERROR] ไม่พบรูปภาพใน INPUT_DIR กรุณาตรวจสอบ path ที่ระบุ")
-        sys.exit(1)
-    return image_paths
-
 
 def load_from_colab_zip() -> list[Path]:
     """Colab: อัปโหลด .zip แล้วแตกไฟล์"""
-    from image_pipeline import upload_zip  # type: ignore
     return upload_zip()
 
 
 def load_from_colab_images() -> list[Path]:
     """Colab: อัปโหลดรูปภาพโดยตรง"""
-    from image_pipeline import upload_images  # type: ignore
     return upload_images()
-
-
-def load_from_zip_path(zip_path: str) -> list[Path]:
-    """
-    แตกไฟล์ .zip จาก path ที่ระบุล่วงหน้า → คัดลอกรูปภาพลง INPUT_DIR
-
-    ใช้งานบน Colab เมื่อ zip ถูกอัปโหลดไว้แล้ว (เช่น /content/data.zip
-    หรือ /content/drive/MyDrive/data.zip) โดยไม่ต้องใช้ interactive uploader
-
-    Parameters
-    ----------
-    zip_path : path ของไฟล์ .zip (local หรือ Colab path)
-
-    Returns
-    -------
-    รายการ Path รูปภาพทั้งหมดใน INPUT_DIR
-    """
-    print("=" * 60)
-    print("ขั้นตอนที่ 1 : รับ Input จาก ZIP (path ที่ระบุล่วงหน้า)")
-    print("=" * 60)
-
-    p = Path(zip_path).resolve()
-    if not p.exists():
-        print(f"[ERROR] ไม่พบไฟล์ zip: {p}")
-        sys.exit(1)
-    if p.suffix.lower() != ".zip":
-        print(f"[ERROR] ไฟล์ต้องเป็น .zip เท่านั้น ได้รับ: {p.name}")
-        sys.exit(1)
-
-    print(f"  📦 แตกไฟล์ zip: {p}")
-    copied = 0
-    with tempfile.TemporaryDirectory() as tmp:
-        with zipfile.ZipFile(p, "r") as zf:
-            zf.extractall(tmp)
-        for img_path in Path(tmp).rglob("*"):
-            if img_path.is_file() and img_path.suffix.lower() in SUPPORTED_EXTENSIONS:
-                dest = cfg.INPUT_DIR / img_path.name
-                shutil.copy2(img_path, dest)
-                copied += 1
-                print(f"     คัดลอก: {img_path.name}")
-
-    print(f"\n  → นำเข้ารูปภาพสำเร็จ {copied} ไฟล์ → {cfg.INPUT_DIR}\n")
-
-    image_paths = _collect_image_paths()
-    if not image_paths:
-        print("[ERROR] ไม่พบรูปภาพใน zip กรุณาตรวจสอบไฟล์")
-        sys.exit(1)
-    return image_paths
 
 
 # ══════════════════════════════════════════════════════════════════════════════
