@@ -124,6 +124,7 @@ def visualize_all_steps(
     blurred: np.ndarray,
     edge_map: np.ndarray,
     image_name: str,
+    apply_transform: bool = False,
     save_dir: Path | None = None,
 ) -> None:
     """
@@ -131,7 +132,7 @@ def visualize_all_steps(
 
     Columns:
         ① Original RGB
-        ② After Transform (Translate → Scale → Rotate)
+        ② Transform / Pre-aligned Image
         ③ Grayscale
         ④ Resized (Downscaled to fit 3×3 kernel)
         ⑤ Gaussian Blur (Noise reduction)
@@ -142,12 +143,16 @@ def visualize_all_steps(
 
     gs = gridspec.GridSpec(1, 6, figure=fig, wspace=0.05)
 
+    if apply_transform:
+        transform_title = f"② After Transform\n(T{int(TRANSLATE_X)},{int(TRANSLATE_Y)} | S×{SCALE_FACTOR} | R{int(ROTATION_DEG)}°)"
+    else:
+        transform_title = "② Pre-aligned Image\n(Ingestor / Skip Transform)"
+
     steps = [
         (cv2.cvtColor(original_bgr,    cv2.COLOR_BGR2RGB),
          "① Original RGB", None, "#4fc3f7"),
         (cv2.cvtColor(transformed_bgr, cv2.COLOR_BGR2RGB),
-         f"② After Transform\n(T{int(TRANSLATE_X)},{int(TRANSLATE_Y)} | S×{SCALE_FACTOR} | R{int(ROTATION_DEG)}°)",
-         None, "#81c995"),
+         transform_title, None, "#81c995"),
         (gray,
          "③ Grayscale", "gray", "#ffb74d"),
         (resized,
@@ -191,18 +196,21 @@ def visualize_all_steps(
 
 def run_pipeline(
     image_paths: list[Path],
+    apply_transform: bool = False,
     save_viz: bool = True,
     max_display: int | None = 5,
 ) -> list[tuple[str, Path]]:
     """
     รัน preprocessing pipeline ครบทุกขั้นตอนและแสดง output ทุกรูป
-    (Transform → Grayscale → Resize → Gaussian Blur → Edge Convolution)
+    ((Optional Transform) → Grayscale → Resize → Gaussian Blur → Edge Convolution)
 
     Parameters
     ----------
-    image_paths : รายการ Path รูปภาพ input
-    save_viz    : True = บันทึกภาพ visualization ลงโฟลเดอร์
-    max_display : จำนวนสูงสุดของรูปที่จะ plot (None = ทั้งหมด)
+    image_paths     : รายการ Path รูปภาพ input
+    apply_transform : False = ข้าม Transform (ภาพถูกจัดตำแหน่งมาแล้วโดยผู้นำเข้าข้อมูล),
+                      True = ทำการเลื่อน/ขยาย/หมุนภาพ
+    save_viz        : True = บันทึกภาพ visualization ลงโฟลเดอร์
+    max_display     : จำนวนสูงสุดของรูปที่จะ plot (None = ทั้งหมด)
 
     Returns
     -------
@@ -214,10 +222,13 @@ def run_pipeline(
     print("=" * 60)
     print(f"ขั้นตอนที่ 2–6 : ประมวลผลภาพ ({len(image_paths)} รูป)")
     print("=" * 60)
-    print(f"  Transform params:")
-    print(f"    Translation : ({TRANSLATE_X}px, {TRANSLATE_Y}px)")
-    print(f"    Scaling     : ×{SCALE_FACTOR}")
-    print(f"    Rotation    : {ROTATION_DEG}°")
+    if apply_transform:
+        print(f"  Transform Mode: เปิดใช้งาน (Manual Opt-in)")
+        print(f"    Translation : ({TRANSLATE_X}px, {TRANSLATE_Y}px)")
+        print(f"    Scaling     : ×{SCALE_FACTOR}")
+        print(f"    Rotation    : {ROTATION_DEG}°")
+    else:
+        print(f"  Transform Mode: ข้าม (Bypassed — ภาพถูกจัดตำแหน่งมาแล้วโดยผู้นำเข้าข้อมูล)")
     print(f"  Resize target: {cfg.RESIZE_TARGET}")
     print(f"  Gaussian Blur: Kernel {cfg.BLUR_KSIZE}×{cfg.BLUR_KSIZE}")
     print(f"  Edge kernel  : Laplacian-style 3×3 (Clip percentile: {cfg.CLIP_PERCENTILE}%)")
@@ -243,9 +254,13 @@ def run_pipeline(
         h, w = bgr.shape[:2]
         print(f"    ขนาดภาพเดิม  : {w}×{h} px")
 
-        # ── Step 2: Geometric Transform ──────────────────────────────
-        transformed = transform_image(bgr)
-        print(f"    ② Transform : เสร็จสิ้น")
+        # ── Step 2: Geometric Transform (ข้ามในระบบเทรนจริง โดยทำโดยผู้นำเข้าข้อมูล) ──
+        if apply_transform:
+            transformed = transform_image(bgr)
+            print(f"    ② Transform : เสร็จสิ้น (Manual Opt-in)")
+        else:
+            transformed = bgr
+            print(f"    ② Transform : ข้าม (Pre-aligned by Ingestor)")
 
         # ── Step 3: Grayscale ────────────────────────────────────────
         gray = cv2.cvtColor(transformed, cv2.COLOR_BGR2GRAY)
@@ -295,6 +310,7 @@ def run_pipeline(
                 blurred=blurred,
                 edge_map=edge_map,
                 image_name=path.name,
+                apply_transform=apply_transform,
                 save_dir=viz_dir,
             )
         print()
@@ -456,6 +472,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="(Colab) อัปโหลดรูปภาพโดยตรงผ่าน Colab interactive uploader",
     )
     parser.add_argument(
+        "--apply-transform", action="store_true",
+        help="เปิดใช้งาน Geometric Transform (Translation/Scale/Rotate) — "
+             "ค่าเริ่มต้นคือปิด (False) เนื่องจากในกระบวนการเทรนจริง ผู้นำเข้าข้อมูลจะทำการจัดตำแหน่งและ crop ภาพมาแล้ว "
+             "ส่วนฟังก์ชัน transform จะถูกนำไปใช้ใน Web App เพื่อให้ User ปรับแต่งภาพ",
+    )
+    parser.add_argument(
         "--max-display", type=int, default=5, metavar="N",
         help="จำนวนสูงสุดของรูปที่จะ plot (default: 5, 0 = ไม่แสดง)",
     )
@@ -504,6 +526,7 @@ def main() -> None:
     # 2-6. รัน pipeline
     processed = run_pipeline(
         image_paths=image_paths,
+        apply_transform=args.apply_transform,
         save_viz=not args.no_save_viz,
         max_display=max_display,
     )

@@ -351,6 +351,39 @@ class TestImagePipeline:
         result = ip.process_images([])
         assert result == []
 
+    def test_apply_transform_false_by_default(self, tmp_dirs):
+        """โหมดเทรนจริง: ค่าเริ่มต้นต้องข้าม transform (apply_transform=False)"""
+        dirs, _, _, _, ip, _ = tmp_dirs
+        p = dirs["INPUT_DIR"] / "training_mode.jpg"
+        self._write_sample_image(p)
+        result = ip.process_images([p])  # default apply_transform=False
+        assert len(result) == 1
+        assert (dirs["GRAY_DIR"] / "gray_training_mode.jpg").exists()
+
+    def test_apply_transform_true_opt_in(self, tmp_dirs):
+        """โหมด Web App / Opt-in: เมื่อเปิด apply_transform=True ต้องผ่านการ transform"""
+        dirs, _, _, _, ip, _ = tmp_dirs
+        p = dirs["INPUT_DIR"] / "webapp_mode.jpg"
+        self._write_sample_image(p)
+        result = ip.process_images([p], apply_transform=True)
+        assert len(result) == 1
+        assert (dirs["CONV_DIR"] / "conv_webapp_mode.jpg").exists()
+
+    def test_run_preprocessing_pipeline_flags(self, tmp_dirs):
+        """ทดสอบ run_preprocessing.run_pipeline ทั้งโหมด default (False) และเปิด transform (True)"""
+        import run_preprocessing as rp
+        dirs, _, _, _, _, _ = tmp_dirs
+        p1 = dirs["INPUT_DIR"] / "pipe1.jpg"
+        self._write_sample_image(p1)
+
+        # 1. Default (False)
+        res1 = rp.run_pipeline([p1], apply_transform=False, save_viz=False, max_display=0)
+        assert len(res1) == 1
+
+        # 2. Opt-in (True)
+        res2 = rp.run_pipeline([p1], apply_transform=True, save_viz=False, max_display=0)
+        assert len(res2) == 1
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 5. Tests: svd_features.py

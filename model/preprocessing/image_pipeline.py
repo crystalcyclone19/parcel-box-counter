@@ -80,11 +80,17 @@ def process_images(
     resize_target: Tuple[int, int] | int = RESIZE_TARGET,
     blur_ksize: int = BLUR_KSIZE,
     clip_percentile: float = CLIP_PERCENTILE,
+    apply_transform: bool = False,
     save_intermediate: bool = True,
     save_viz: bool = True,
 ) -> List[Tuple[str, Path]]:
     """รันกระบวนการประมวลผลรูปภาพแบบ End-to-End
-    Transform → Grayscale → Resize → Gaussian Blur → Edge Convolution → บันทึก → Visualize
+    (Optional Transform) → Grayscale → Resize → Gaussian Blur → Edge Convolution → บันทึก → Visualize
+
+    หมายเหตุ:
+      ในกระบวนการเทรนโมเดลจริง ค่าเริ่มต้น apply_transform=False เพราะภาพแต่ละภาพได้รับการ
+      Crop / จัดตำแหน่งล่วงหน้าโดยผู้นำเข้าข้อมูลเรียบร้อยแล้ว ส่วนการทำ Transform จะนำไปใช้
+      ในระบบ Web Application ให้ผู้ใช้งานปรับแต่งบนหน้าเว็บก่อนส่งมาทำนาย
 
     Parameters
     ----------
@@ -92,6 +98,8 @@ def process_images(
     resize_target     : ขนาดที่ต้องการย่อภาพ (width, height) เพื่อความเหมาะสมกับ Kernel 3x3
     blur_ksize        : ขนาด Gaussian blur kernel เพื่อลด Noise (เช่น 5)
     clip_percentile   : เปอร์เซ็นไทล์สำหรับตัด Outlier ใน Edge Map (เช่น 98.0)
+    apply_transform   : False = ข้าม Transform (ภาพถูกจัดตำแหน่งมาแล้วโดยผู้นำเข้าข้อมูล),
+                        True = รัน transform_image (เลื่อน/ขยาย/หมุน)
     save_intermediate : True = บันทึกไฟล์ภาพของแต่ละขั้นตอน (Resized, Blurred)
     save_viz          : True = บันทึกภาพ Visualization รวมทุกขั้นตอนลง pipeline_visualizations/
 
@@ -118,12 +126,15 @@ def process_images(
             print(f"[SKIP] อ่านรูปไม่ได้/รูปว่าง: {path.name}")
             continue
 
-        # ── Step 1: Geometric Transform ──────────────────────────────
-        rotated = transform_image(bgr)
+        # ── Step 1: Geometric Transform (ข้ามในระบบเทรนจริง โดยทำโดยผู้นำเข้าข้อมูล) ──
+        if apply_transform:
+            transformed = transform_image(bgr)
+        else:
+            transformed = bgr
 
         # ── Step 2-5: Grayscale, Resize, Blur, Edge Convolution ──────
         gray, resized, blurred, edge_map = process_image_edges(
-            rotated,
+            transformed,
             resize_target=resize_target,
             blur_ksize=blur_ksize,
             clip_percentile=clip_percentile,
@@ -149,13 +160,14 @@ def process_images(
         processed.append((path.name, gray_path))
         _maybe_visualize(
             original_bgr=bgr,
-            transformed_bgr=rotated,
+            transformed_bgr=transformed,
             gray=gray,
             resized=resized,
             blurred=blurred,
             edge_map=edge_map,
             title=path.name,
             count=len(processed),
+            apply_transform=apply_transform,
             save_dir=viz_dir,
         )
 
@@ -172,6 +184,7 @@ def _maybe_visualize(
     edge_map: np.ndarray,
     title: str,
     count: int,
+    apply_transform: bool = False,
     save_dir: Optional[Path] = None,
 ) -> None:
     """แสดงกราฟและบันทึกภาพผลลัพธ์ทุกขั้นตอนใน pipeline แบบ side-by-side (6 คอลัมน์)"""
@@ -181,9 +194,11 @@ def _maybe_visualize(
     fig, axes = plt.subplots(1, 6, figsize=(22, 4))
     fig.patch.set_facecolor("#0b0f19")
 
+    transform_title = "② Transformed\n(Opt-in)" if apply_transform else "② Pre-aligned\n(Ingestor / As-is)"
+
     steps = [
         (cv2.cvtColor(original_bgr, cv2.COLOR_BGR2RGB), "① Original RGB", None, "#4fc3f7"),
-        (cv2.cvtColor(transformed_bgr, cv2.COLOR_BGR2RGB), "② Transform", None, "#81c995"),
+        (cv2.cvtColor(transformed_bgr, cv2.COLOR_BGR2RGB), transform_title, None, "#81c995"),
         (gray, "③ Grayscale", "gray", "#ffb74d"),
         (resized, f"④ Resized\n({resized.shape[1]}×{resized.shape[0]})", "gray", "#a78bfa"),
         (blurred, f"⑤ Gaussian Blur\n(K={BLUR_KSIZE})", "gray", "#38bdf8"),
