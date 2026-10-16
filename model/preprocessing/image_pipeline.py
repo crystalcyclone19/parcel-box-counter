@@ -9,10 +9,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from config import (
-    INPUT_DIR, GRAY_DIR, CONV_DIR,
+    INPUT_DIR, GRAY_DIR, RESIZED_DIR, BLUR_DIR, CONV_DIR,
+    BASE_DIR,
     SUPPORTED_EXTENSIONS,
     TRANSLATE_X, TRANSLATE_Y, SCALE_FACTOR, ROTATION_DEG,
     MAX_PLOTS,
+    RESIZE_TARGET, BLUR_KSIZE, CLIP_PERCENTILE,
 )
 
 # ─── Edge detection kernel ────────────────────────────────────────────────────
@@ -273,17 +275,40 @@ def create_edge_map(
 # Main pipeline: process all images
 # ─────────────────────────────────────────────────────────────────────────────
 
-def process_images(image_paths: list[Path]) -> list[tuple[str, Path]]:
-    """Transform → Grayscale → Edge Convolution → บันทึก → (optionally) Visualize
+def process_images(
+    image_paths: list[Path],
+    resize_target: tuple[int, int] | int = RESIZE_TARGET,
+    blur_ksize: int = BLUR_KSIZE,
+    clip_percentile: float = CLIP_PERCENTILE,
+    save_intermediate: bool = True,
+    save_viz: bool = True,
+) -> list[tuple[str, Path]]:
+    """Transform → Grayscale → Resize → Gaussian Blur → Edge Convolution → บันทึก → Visualize
 
     Parameters
     ----------
-    image_paths : รายการ Path ของรูปภาพต้นฉบับ
+    image_paths       : รายการ Path ของรูปภาพต้นฉบับ
+    resize_target     : ขนาดที่ต้องการย่อภาพ (width, height) เพื่อความเหมาะสมกับ Kernel 3x3
+    blur_ksize        : ขนาด Gaussian blur kernel เพื่อลด Noise (เช่น 5)
+    clip_percentile   : เปอร์เซ็นไทล์สำหรับตัด Outlier ใน Edge Map (เช่น 98.0)
+    save_intermediate : True = บันทึกไฟล์ภาพของแต่ละขั้นตอน (Resized, Blurred)
+    save_viz          : True = บันทึกภาพ Visualization รวมทุกขั้นตอนลง pipeline_visualizations/
 
     Returns
     -------
     processed : รายการ (original_filename, gray_path) ที่สำเร็จ
     """
+    # ตรวจสอบและสร้างโฟลเดอร์สำหรับผลลัพธ์ทุกขั้นตอน
+    GRAY_DIR.mkdir(parents=True, exist_ok=True)
+    CONV_DIR.mkdir(parents=True, exist_ok=True)
+    if save_intermediate:
+        RESIZED_DIR.mkdir(parents=True, exist_ok=True)
+        BLUR_DIR.mkdir(parents=True, exist_ok=True)
+
+    viz_dir = (BASE_DIR / "pipeline_visualizations") if save_viz else None
+    if viz_dir:
+        viz_dir.mkdir(parents=True, exist_ok=True)
+
     processed: list[tuple[str, Path]] = []
 
     for path in image_paths:
@@ -292,41 +317,99 @@ def process_images(image_paths: list[Path]) -> list[tuple[str, Path]]:
             print(f'[SKIP] อ่านรูปไม่ได้/รูปว่าง: {path.name}')
             continue
 
-        rotated  = transform_image(bgr)
-        gray     = cv2.cvtColor(rotated, cv2.COLOR_BGR2GRAY)
-        edge_map = create_edge_map(gray)
+        # ── Step 1: Geometric Transform ──────────────────────────────
+        rotated = transform_image(bgr)
 
+        # ── Step 2: Grayscale Conversion ─────────────────────────────
+        gray = cv2.cvtColor(rotated, cv2.COLOR_BGR2GRAY)
+
+        # ── Step 3: Resize (Downscaling to fit kernel) ────────────────
+        resized = resize_image(gray, target_size=resize_target)
+
+        # ── Step 4: Gaussian Blur (Noise Filtering) ──────────────────
+        blurred = apply_gaussian_blur(resized, kernel_size=blur_ksize)
+
+        # ── Step 5: Edge Convolution (Laplacian + Percentile) ────────
+        edge_map = create_edge_map(blurred, clip_percentile=clip_percentile)
+
+        # ── บันทึกผลลัพธ์แต่ละขั้นตอน ──────────────────────────────────
         gray_path = GRAY_DIR / f'gray_{path.name}'
         conv_path = CONV_DIR / f'conv_{path.name}'
-        gray_ok   = cv2.imwrite(str(gray_path), gray)
-        conv_ok   = cv2.imwrite(str(conv_path), edge_map)
+
+        gray_ok = cv2.imwrite(str(gray_path), gray)
+        conv_ok = cv2.imwrite(str(conv_path), edge_map)
+
+        if save_intermediate:
+            resized_path = RESIZED_DIR / f'resized_{path.name}'
+            blur_path = BLUR_DIR / f'blur_{path.name}'
+            cv2.imwrite(str(resized_path), resized)
+            cv2.imwrite(str(blur_path), blurred)
+
         if not (gray_ok and conv_ok):
             print(f'[SKIP] บันทึกผลลัพธ์ไม่สำเร็จ: {path.name}')
             continue
 
         processed.append((path.name, gray_path))
-        _maybe_visualize(bgr, gray, edge_map, path.name, len(processed))
+        _maybe_visualize(
+            original_bgr=bgr,
+            transformed_bgr=rotated,
+            gray=gray,
+            resized=resized,
+            blurred=blurred,
+            edge_map=edge_map,
+            title=path.name,
+            count=len(processed),
+            save_dir=viz_dir,
+        )
 
-    print(f'สร้างภาพ Grayscale และ Convolution สำเร็จ: {len(processed)} รูป')
+    print(f'ประมวลผลสำเร็จ: {len(processed)} รูป (บันทึก Grayscale, Resized, Blurred, Convolution)')
     return processed
 
 
-def _maybe_visualize(bgr: np.ndarray, gray: np.ndarray,
-                     edge_map: np.ndarray, title: str, count: int) -> None:
-    """แสดงกราฟ Original / Grayscale / Edge Map (ถ้าไม่เกิน MAX_PLOTS)"""
+def _maybe_visualize(
+    original_bgr: np.ndarray,
+    transformed_bgr: np.ndarray,
+    gray: np.ndarray,
+    resized: np.ndarray,
+    blurred: np.ndarray,
+    edge_map: np.ndarray,
+    title: str,
+    count: int,
+    save_dir: Path | None = None,
+) -> None:
+    """แสดงกราฟและบันทึกภาพผลลัพธ์ทุกขั้นตอนใน pipeline แบบ side-by-side (6 คอลัมน์)"""
     if MAX_PLOTS is not None and count > MAX_PLOTS:
         return
 
-    fig, axes = plt.subplots(1, 3, figsize=(14, 4))
-    axes[0].imshow(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB))
-    axes[0].set_title('Original RGB')
-    axes[1].imshow(gray, cmap='gray', vmin=0, vmax=255)
-    axes[1].set_title('Grayscale Matrix (after transform)')
-    axes[2].imshow(edge_map, cmap='gray', vmin=0, vmax=255)
-    axes[2].set_title('Convolution Feature Map')
-    for axis in axes:
-        axis.axis('off')
-    fig.suptitle(title)
+    fig, axes = plt.subplots(1, 6, figsize=(22, 4))
+    fig.patch.set_facecolor("#0b0f19")
+
+    steps = [
+        (cv2.cvtColor(original_bgr, cv2.COLOR_BGR2RGB), "① Original RGB", None, "#4fc3f7"),
+        (cv2.cvtColor(transformed_bgr, cv2.COLOR_BGR2RGB), "② Transform", None, "#81c995"),
+        (gray, "③ Grayscale", "gray", "#ffb74d"),
+        (resized, f"④ Resized\n({resized.shape[1]}×{resized.shape[0]})", "gray", "#a78bfa"),
+        (blurred, f"⑤ Gaussian Blur\n(K={BLUR_KSIZE})", "gray", "#38bdf8"),
+        (edge_map, "⑥ Edge Map\n(Laplacian)", "inferno", "#f48fb1"),
+    ]
+
+    for ax, (img, step_title, cmap, border_color) in zip(axes, steps):
+        kwargs = {"vmin": 0, "vmax": 255} if img.ndim == 2 else {}
+        ax.imshow(img, cmap=cmap, **kwargs)
+        ax.set_title(step_title, color="white", fontsize=9.5, fontweight="bold", pad=8)
+        ax.axis("off")
+        for spine in ax.spines.values():
+            spine.set_edgecolor(border_color)
+            spine.set_linewidth(2.0)
+
+    fig.suptitle(f"Preprocessing Pipeline Steps | {title}", color="white", fontsize=12, fontweight="bold", y=1.02)
     plt.tight_layout()
+
+    if save_dir is not None:
+        save_dir.mkdir(parents=True, exist_ok=True)
+        out_path = save_dir / f"pipeline_{Path(title).stem}.png"
+        fig.savefig(out_path, bbox_inches="tight", dpi=120, facecolor=fig.get_facecolor())
+        print(f"  💾 บันทึกภาพขั้นตอน Pipeline → {out_path}")
+
     plt.show()
     plt.close(fig)

@@ -38,12 +38,14 @@ import config as _cfg  # noqa: E402
 def tmp_dirs(tmp_path, monkeypatch):
     """Override config dirs ให้ชี้ไปที่ tmp_path ทุก test"""
     dirs = {
-        "INPUT_DIR":  tmp_path / "input_images",
-        "GRAY_DIR":   tmp_path / "Grayscale",
-        "CONV_DIR":   tmp_path / "Convolution",
-        "SVD_DIR":    tmp_path / "output_svd",
-        "MATRIX_DIR": tmp_path / "output_svd" / "matrices",
-        "BASE_DIR":   tmp_path,
+        "INPUT_DIR":   tmp_path / "input_images",
+        "GRAY_DIR":    tmp_path / "Grayscale",
+        "RESIZED_DIR": tmp_path / "Resized",
+        "BLUR_DIR":    tmp_path / "Blurred",
+        "CONV_DIR":    tmp_path / "Convolution",
+        "SVD_DIR":     tmp_path / "output_svd",
+        "MATRIX_DIR":  tmp_path / "output_svd" / "matrices",
+        "BASE_DIR":    tmp_path,
     }
     for attr, path in dirs.items():
         path.mkdir(parents=True, exist_ok=True)
@@ -52,7 +54,7 @@ def tmp_dirs(tmp_path, monkeypatch):
     # แทนที่ ALL_DIRS ด้วย tuple ใหม่ที่ชี้ไป tmp
     monkeypatch.setattr(
         _cfg, "ALL_DIRS",
-        tuple(dirs[k] for k in ("INPUT_DIR", "GRAY_DIR", "CONV_DIR", "SVD_DIR", "MATRIX_DIR")),
+        tuple(dirs[k] for k in ("INPUT_DIR", "GRAY_DIR", "RESIZED_DIR", "BLUR_DIR", "CONV_DIR", "SVD_DIR", "MATRIX_DIR")),
     )
     # ป้องกันไม่ให้ process_images เด้ง GUI popup ค้างระหว่าง test
     monkeypatch.setattr(_cfg, "MAX_PLOTS", 0)
@@ -227,6 +229,18 @@ class TestProcessImages:
         ip.process_images([p])
         conv_files = list(dirs["CONV_DIR"].iterdir())
         assert len(conv_files) == 1
+
+    def test_resized_and_blur_files_created(self, tmp_dirs):
+        dirs, ip, _ = tmp_dirs
+        p = dirs["INPUT_DIR"] / "img_multi.jpg"
+        self._write_sample_image(p)
+        ip.process_images([p], save_intermediate=True)
+        resized_files = list(dirs["RESIZED_DIR"].iterdir())
+        blur_files = list(dirs["BLUR_DIR"].iterdir())
+        assert len(resized_files) == 1
+        assert len(blur_files) == 1
+        assert resized_files[0].name == "resized_img_multi.jpg"
+        assert blur_files[0].name == "blur_img_multi.jpg"
 
     def test_skip_bad_image(self, tmp_dirs, capsys):
         """ไฟล์ที่ไม่ใช่ภาพต้องถูก skip ไม่ crash"""

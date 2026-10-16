@@ -41,6 +41,16 @@ import tempfile
 import time
 from pathlib import Path
 
+# ป้องกัน UnicodeEncodeError บน Windows console
+if sys.platform == "win32":
+    try:
+        if sys.stdout is not None:
+            sys.stdout.reconfigure(encoding="utf-8")
+        if sys.stderr is not None:
+            sys.stderr.reconfigure(encoding="utf-8")
+    except (AttributeError, Exception):
+        pass
+
 import cv2
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
@@ -56,9 +66,12 @@ import config as cfg
 from config import (
     SUPPORTED_EXTENSIONS,
     TRANSLATE_X, TRANSLATE_Y, SCALE_FACTOR, ROTATION_DEG,
+    RESIZE_TARGET, BLUR_KSIZE, CLIP_PERCENTILE,
 )
 from image_pipeline import (
     transform_image,
+    resize_image,
+    apply_gaussian_blur,
     create_edge_map,
     _collect_image_paths,
 )
@@ -215,23 +228,27 @@ def visualize_all_steps(
     original_bgr: np.ndarray,
     transformed_bgr: np.ndarray,
     gray: np.ndarray,
+    resized: np.ndarray,
+    blurred: np.ndarray,
     edge_map: np.ndarray,
     image_name: str,
     save_dir: Path | None = None,
 ) -> None:
     """
-    แสดงและบันทึกภาพทุกขั้นตอนใน pipeline แบบ side-by-side (4 คอลัมน์)
+    แสดงและบันทึกภาพทุกขั้นตอนใน pipeline แบบ side-by-side (6 คอลัมน์)
 
     Columns:
         ① Original RGB
         ② After Transform (Translate → Scale → Rotate)
         ③ Grayscale
-        ④ Edge Convolution (Laplacian kernel)
+        ④ Resized (Downscaled to fit 3×3 kernel)
+        ⑤ Gaussian Blur (Noise reduction)
+        ⑥ Edge Convolution (Laplacian kernel + Percentile clip)
     """
-    fig = plt.figure(figsize=(18, 5))
+    fig = plt.figure(figsize=(22, 4))
     fig.patch.set_facecolor("#0f0f1a")
 
-    gs = gridspec.GridSpec(1, 4, figure=fig, wspace=0.05)
+    gs = gridspec.GridSpec(1, 6, figure=fig, wspace=0.05)
 
     steps = [
         (cv2.cvtColor(original_bgr,    cv2.COLOR_BGR2RGB),
@@ -241,8 +258,12 @@ def visualize_all_steps(
          None, "#81c995"),
         (gray,
          "③ Grayscale", "gray", "#ffb74d"),
+        (resized,
+         f"④ Resized\n({resized.shape[1]}×{resized.shape[0]} px)", "gray", "#a78bfa"),
+        (blurred,
+         f"⑤ Gaussian Blur\n(K={BLUR_KSIZE}×{BLUR_KSIZE})", "gray", "#38bdf8"),
         (edge_map,
-         "④ Edge Convolution\n(Laplacian 3×3)", "inferno", "#f48fb1"),
+         "⑥ Edge Convolution\n(Cleaned Laplacian)", "inferno", "#f48fb1"),
     ]
 
     for i, (img, title, cmap, border_color) in enumerate(steps):
@@ -253,10 +274,10 @@ def visualize_all_steps(
         ax.axis("off")
         for spine in ax.spines.values():
             spine.set_edgecolor(border_color)
-            spine.set_linewidth(2.5)
+            spine.set_linewidth(2.0)
 
     fig.suptitle(
-        f"Preprocessing Pipeline  |  {image_name}",
+        f"Preprocessing Pipeline Steps  |  {image_name}",
         color="white", fontsize=12, fontweight="bold", y=1.01,
     )
     plt.tight_layout()
@@ -283,6 +304,7 @@ def run_pipeline(
 ) -> list[tuple[str, Path]]:
     """
     รัน preprocessing pipeline ครบทุกขั้นตอนและแสดง output ทุกรูป
+    (Transform → Grayscale → Resize → Gaussian Blur → Edge Convolution)
 
     Parameters
     ----------
@@ -298,14 +320,18 @@ def run_pipeline(
     processed: list[tuple[str, Path]] = []
 
     print("=" * 60)
-    print(f"ขั้นตอนที่ 2–4 : ประมวลผลภาพ ({len(image_paths)} รูป)")
+    print(f"ขั้นตอนที่ 2–6 : ประมวลผลภาพ ({len(image_paths)} รูป)")
     print("=" * 60)
     print(f"  Transform params:")
     print(f"    Translation : ({TRANSLATE_X}px, {TRANSLATE_Y}px)")
     print(f"    Scaling     : ×{SCALE_FACTOR}")
     print(f"    Rotation    : {ROTATION_DEG}°")
-    print(f"  Edge kernel  : Laplacian-style 3×3")
+    print(f"  Resize target: {cfg.RESIZE_TARGET}")
+    print(f"  Gaussian Blur: Kernel {cfg.BLUR_KSIZE}×{cfg.BLUR_KSIZE}")
+    print(f"  Edge kernel  : Laplacian-style 3×3 (Clip percentile: {cfg.CLIP_PERCENTILE}%)")
     print(f"  GRAY_DIR     : {cfg.GRAY_DIR}")
+    print(f"  RESIZED_DIR  : {cfg.RESIZED_DIR}")
+    print(f"  BLUR_DIR     : {cfg.BLUR_DIR}")
     print(f"  CONV_DIR     : {cfg.CONV_DIR}")
     print()
 
@@ -323,7 +349,7 @@ def run_pipeline(
             continue
 
         h, w = bgr.shape[:2]
-        print(f"    ขนาดภาพ    : {w}×{h} px")
+        print(f"    ขนาดภาพเดิม  : {w}×{h} px")
 
         # ── Step 2: Geometric Transform ──────────────────────────────
         transformed = transform_image(bgr)
@@ -333,23 +359,37 @@ def run_pipeline(
         gray = cv2.cvtColor(transformed, cv2.COLOR_BGR2GRAY)
         print(f"    ③ Grayscale : เสร็จสิ้น  (min={gray.min()}, max={gray.max()})")
 
-        # ── Step 4: Edge Convolution ─────────────────────────────────
-        edge_map = create_edge_map(gray)
-        print(f"    ④ Edge map  : เสร็จสิ้น  (min={edge_map.min()}, max={edge_map.max()})")
+        # ── Step 4: Resize (Downscaling to fit 3×3 kernel) ───────────
+        resized = resize_image(gray, target_size=cfg.RESIZE_TARGET)
+        print(f"    ④ Resized   : เสร็จสิ้น  ({resized.shape[1]}×{resized.shape[0]} px)")
 
-        # ── บันทึก output ────────────────────────────────────────────
+        # ── Step 5: Gaussian Blur (Noise Reduction) ──────────────────
+        blurred = apply_gaussian_blur(resized, kernel_size=cfg.BLUR_KSIZE)
+        print(f"    ⑤ Blur      : เสร็จสิ้น  (K={cfg.BLUR_KSIZE}×{cfg.BLUR_KSIZE})")
+
+        # ── Step 6: Edge Convolution ─────────────────────────────────
+        edge_map = create_edge_map(blurred, clip_percentile=cfg.CLIP_PERCENTILE)
+        print(f"    ⑥ Edge map  : เสร็จสิ้น  (min={edge_map.min()}, max={edge_map.max()})")
+
+        # ── บันทึก output แต่ละขั้นตอน ───────────────────────────────
         gray_path = cfg.GRAY_DIR / f"gray_{path.name}"
+        resized_path = cfg.RESIZED_DIR / f"resized_{path.name}"
+        blur_path = cfg.BLUR_DIR / f"blur_{path.name}"
         conv_path = cfg.CONV_DIR / f"conv_{path.name}"
 
         gray_ok = cv2.imwrite(str(gray_path), gray)
+        resized_ok = cv2.imwrite(str(resized_path), resized)
+        blur_ok = cv2.imwrite(str(blur_path), blurred)
         conv_ok = cv2.imwrite(str(conv_path), edge_map)
 
-        if not (gray_ok and conv_ok):
+        if not (gray_ok and resized_ok and blur_ok and conv_ok):
             print(f"    ✗ บันทึกไฟล์ไม่สำเร็จ → ข้าม\n")
             continue
 
         processed.append((path.name, gray_path))
         print(f"    ✓ Saved: {gray_path.name}")
+        print(f"    ✓ Saved: {resized_path.name}")
+        print(f"    ✓ Saved: {blur_path.name}")
         print(f"    ✓ Saved: {conv_path.name}")
 
         # ── Visualization ────────────────────────────────────────────
@@ -359,6 +399,8 @@ def run_pipeline(
                 original_bgr=bgr,
                 transformed_bgr=transformed,
                 gray=gray,
+                resized=resized,
+                blurred=blurred,
                 edge_map=edge_map,
                 image_name=path.name,
                 save_dir=viz_dir,
@@ -377,6 +419,8 @@ def run_pipeline(
     print()
     print("Output directories:")
     print(f"  📂 Grayscale      → {cfg.GRAY_DIR}")
+    print(f"  📂 Resized        → {cfg.RESIZED_DIR}")
+    print(f"  📂 Blurred        → {cfg.BLUR_DIR}")
     print(f"  📂 Convolution    → {cfg.CONV_DIR}")
     if viz_dir:
         print(f"  📂 Visualization  → {viz_dir}")
@@ -390,23 +434,31 @@ def run_pipeline(
 # ══════════════════════════════════════════════════════════════════════════════
 
 def print_output_table(processed: list[tuple[str, Path]]) -> None:
-    """แสดงตารางสรุปไฟล์ output ทั้งหมด"""
+    """แสดงตารางสรุปไฟล์ output ทั้งหมดของทุกขั้นตอน"""
     if not processed:
         print("[WARN] ไม่มีไฟล์ที่ประมวลผลสำเร็จ")
         return
 
-    print("=" * 60)
-    print("รายการ Output Files")
-    print("=" * 60)
-    fmt = "  {:<40} {:<40}"
-    print(fmt.format("Grayscale", "Convolution (Edge)"))
-    print("  " + "─" * 78)
+    print("=" * 95)
+    print("รายการ Output Files (ทุกขั้นตอนใน Pipeline)")
+    print("=" * 95)
+    fmt = "  {:<23} {:<23} {:<23} {:<23}"
+    print(fmt.format("Grayscale", "Resized", "Blurred", "Convolution (Edge)"))
+    print("  " + "─" * 90)
     for orig_name, gray_path in processed:
+        resized_path = cfg.RESIZED_DIR / f"resized_{orig_name}"
+        blur_path = cfg.BLUR_DIR / f"blur_{orig_name}"
         conv_path = cfg.CONV_DIR / f"conv_{orig_name}"
+
         gray_sz = f"{gray_path.stat().st_size / 1024:.1f}KB" if gray_path.exists() else "N/A"
+        resized_sz = f"{resized_path.stat().st_size / 1024:.1f}KB" if resized_path.exists() else "N/A"
+        blur_sz = f"{blur_path.stat().st_size / 1024:.1f}KB" if blur_path.exists() else "N/A"
         conv_sz = f"{conv_path.stat().st_size / 1024:.1f}KB" if conv_path.exists() else "N/A"
+
         print(fmt.format(
             f"{gray_path.name} ({gray_sz})",
+            f"{resized_path.name} ({resized_sz})",
+            f"{blur_path.name} ({blur_sz})",
             f"{conv_path.name} ({conv_sz})",
         ))
     print()
@@ -414,12 +466,12 @@ def print_output_table(processed: list[tuple[str, Path]]) -> None:
 
 def show_output_grid(processed: list[tuple[str, Path]], max_rows: int = 5) -> None:
     """
-    แสดง output grid (Grayscale + Edge Convolution) ทั้งหมดในหน้าเดียว
+    แสดง output grid (Resized + Blurred + Edge Convolution) ทั้งหมดในหน้าเดียว
 
     Parameters
     ----------
     processed : รายการ (original_filename, gray_path)
-    max_rows  : จำนวนแถวสูงสุด (แต่ละแถว = 1 รูป × 2 คอลัมน์)
+    max_rows  : จำนวนแถวสูงสุด (แต่ละแถว = 1 รูป × 3 คอลัมน์)
     """
     n = min(len(processed), max_rows)
     if n == 0:
@@ -427,7 +479,7 @@ def show_output_grid(processed: list[tuple[str, Path]], max_rows: int = 5) -> No
 
     print(f"แสดง Output Grid ({n}/{len(processed)} รูป) ...")
 
-    fig, axes = plt.subplots(n, 2, figsize=(10, 4 * n))
+    fig, axes = plt.subplots(n, 3, figsize=(14, 4 * n))
     fig.patch.set_facecolor("#0d1117")
 
     # กรณีมีแถวเดียว axes จะเป็น 1D
@@ -435,19 +487,23 @@ def show_output_grid(processed: list[tuple[str, Path]], max_rows: int = 5) -> No
         axes = [axes]
 
     # หัวคอลัมน์
-    col_labels = ["Grayscale", "Edge Convolution"]
-    colors = ["#ffb74d", "#f48fb1"]
+    col_labels = ["Resized (512×512)", f"Blurred (K={cfg.BLUR_KSIZE})", "Edge Convolution"]
+    colors = ["#a78bfa", "#38bdf8", "#f48fb1"]
     for col_idx, (label, color) in enumerate(zip(col_labels, colors)):
         axes[0][col_idx].set_title(label, color=color, fontsize=13,
                                    fontweight="bold", pad=12)
 
-    for row_idx, (orig_name, gray_path) in enumerate(processed[:n]):
+    for row_idx, (orig_name, _) in enumerate(processed[:n]):
+        resized_path = cfg.RESIZED_DIR / f"resized_{orig_name}"
+        blur_path = cfg.BLUR_DIR / f"blur_{orig_name}"
         conv_path = cfg.CONV_DIR / f"conv_{orig_name}"
 
-        gray_img = cv2.imread(str(gray_path), cv2.IMREAD_GRAYSCALE)
+        resized_img = cv2.imread(str(resized_path), cv2.IMREAD_GRAYSCALE)
+        blur_img = cv2.imread(str(blur_path), cv2.IMREAD_GRAYSCALE)
         conv_img = cv2.imread(str(conv_path), cv2.IMREAD_GRAYSCALE)
 
-        for col_idx, (cmap, img) in enumerate([("gray", gray_img), ("inferno", conv_img)]):
+        items = [("gray", resized_img), ("gray", blur_img), ("inferno", conv_img)]
+        for col_idx, (cmap, img) in enumerate(items):
             ax = axes[row_idx][col_idx]
             if img is not None:
                 ax.imshow(img, cmap=cmap, vmin=0, vmax=255)
@@ -455,11 +511,9 @@ def show_output_grid(processed: list[tuple[str, Path]], max_rows: int = 5) -> No
                 ax.set_facecolor("#1a1a2e")
                 ax.text(0.5, 0.5, "N/A", ha="center", va="center",
                         color="red", fontsize=14, transform=ax.transAxes)
-            ax.set_ylabel(orig_name, color="#cccccc", fontsize=8,
-                          rotation=0, labelpad=120, va="center")
             ax.axis("off")
 
-    fig.suptitle("Output Summary — Grayscale & Edge Convolution",
+    fig.suptitle("Output Summary — Resized, Blurred & Edge Convolution",
                  color="white", fontsize=14, fontweight="bold", y=1.01)
     plt.tight_layout()
     plt.show()
@@ -528,7 +582,7 @@ def main() -> None:
     parser = build_arg_parser()
     args = parser.parse_args()
 
-    max_display: int | None = args.max_display if args.max_display > 0 else None
+    max_display: int | None = args.max_display if args.max_display >= 0 else None
 
     print()
     print("╔══════════════════════════════════════════════════════════╗")
@@ -555,16 +609,17 @@ def main() -> None:
     else:
         image_paths = load_from_colab_images()
 
-    # 2-4. รัน pipeline
+    # 2-6. รัน pipeline
     processed = run_pipeline(
         image_paths=image_paths,
         save_viz=not args.no_save_viz,
         max_display=max_display,
     )
 
-    # 5. แสดงสรุปผล
+    # 7. แสดงสรุปผล
     print_output_table(processed)
-    show_output_grid(processed, max_rows=max_display or len(processed))
+    if max_display != 0:
+        show_output_grid(processed, max_rows=max_display or len(processed))
 
     print("✅ Pipeline เสร็จสมบูรณ์!")
     print()

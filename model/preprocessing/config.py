@@ -1,4 +1,4 @@
-﻿# config.py — ตั้งค่าระบบกลาง (Paths, Constants, Hyperparameters)
+# config.py — ตั้งค่าระบบกลาง (Paths, Constants, Hyperparameters)
 from pathlib import Path
 
 # ─── Drive / Storage ──────────────────────────────────────────────────────────
@@ -16,13 +16,15 @@ def get_base_dir() -> Path:
 BASE_DIR = get_base_dir()
 
 # ─── Sub-directories ──────────────────────────────────────────────────────────
-INPUT_DIR  = BASE_DIR / 'input_images'
-GRAY_DIR   = BASE_DIR / 'Grayscale'
-CONV_DIR   = BASE_DIR / 'Convolution'
-SVD_DIR    = BASE_DIR / 'output_svd'
-MATRIX_DIR = SVD_DIR  / 'matrices'
+INPUT_DIR   = BASE_DIR / 'input_images'
+GRAY_DIR    = BASE_DIR / 'Grayscale'
+RESIZED_DIR = BASE_DIR / 'Resized'
+BLUR_DIR    = BASE_DIR / 'Blurred'
+CONV_DIR    = BASE_DIR / 'Convolution'
+SVD_DIR     = BASE_DIR / 'output_svd'
+MATRIX_DIR  = SVD_DIR  / 'matrices'
 
-ALL_DIRS = (INPUT_DIR, GRAY_DIR, CONV_DIR, SVD_DIR, MATRIX_DIR)
+ALL_DIRS = (INPUT_DIR, GRAY_DIR, RESIZED_DIR, BLUR_DIR, CONV_DIR, SVD_DIR, MATRIX_DIR)
 
 
 def ensure_dirs() -> None:
@@ -37,6 +39,11 @@ IMAGE_SIZE   = 128      # resize เป็น IMAGE_SIZE × IMAGE_SIZE ก่อ
 N_FEATURES   = 64       # จำนวน SVD components
 MAX_PLOTS    = 5        # None = แสดงทุกรูป
 RANDOM_STATE = 42
+
+# ─── Intermediate Preprocessing & Noise Reduction ────────────────────────────
+RESIZE_TARGET: tuple[int, int] = (512, 512)  # ขนาดลดความละเอียดภาพก่อนเข้า Edge Detection
+BLUR_KSIZE: int = 5                         # Gaussian Blur kernel size (เลขคี่)
+CLIP_PERCENTILE: float = 98.0               # เปอร์เซ็นไทล์สำหรับตัด Outlier ใน Edge Map
 
 # ─── Geometric transform parameters ──────────────────────────────────────────
 TRANSLATE_X: float = 50.0   # pixel shift แกน X
