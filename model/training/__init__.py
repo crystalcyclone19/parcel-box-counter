@@ -6,9 +6,9 @@ Automated Training & Model Selection Package
 
 ประกอบด้วย:
   dataset.py       — โหลด Label, จับคู่ภาพ-Label, แบ่ง Train/Val/Test
-  trainer.py       — Training Loop, Early Stopping, Validation
-  tuner.py         — Hyperparameter Grid Search, Trial Execution
-  evaluator.py     — Metrics (MSE, MAE, R², Accuracy±1)
+  trainer.py       — Training Loop (Cross-Entropy), Early Stopping, Checkpoint
+  tuner.py         — Hyperparameter Grid Search, Feature Extraction, SVD+Stat Caching
+  evaluator.py     — Metrics (Cross-Entropy, Exact Accuracy, ±1 Accuracy, Macro F1, Confusion Matrix)
   model_registry.py — Champion Model Export & Leaderboard
 """
 

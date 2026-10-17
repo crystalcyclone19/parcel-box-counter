@@ -10,6 +10,10 @@ Stage 1: Dataset Preparation & Splitting
 หมายเหตุ Data Leakage Prevention:
   SVD Fit ต้องทำบน Train Set เท่านั้น แล้วนำ Mean_train, Vt_train
   ไปใช้ Project ข้อมูล Val/Test — ห้าม Fit บน Full Dataset
+
+Feature Vector (สำหรับ Multi-class Classification):
+  [SVD_features(64) | total_edge_area | contour_count | aspect_ratio]
+  → input_dim = 64 + 3 = 67
 """
 
 from __future__ import annotations
@@ -57,7 +61,7 @@ except ImportError:
 class ImageLabel:
     """จับคู่ภาพหนึ่งใบกับ Label (จำนวนกล่องพัสดุ)"""
     image_path: Path
-    label: float       # จำนวนกล่องพัสดุ (Ground Truth)
+    label: float       # จำนวนกล่องพัสดุ (Ground Truth) — ใช้ int(label)-1 เป็น class index
     filename: str = field(init=False)
 
     def __post_init__(self):
@@ -103,18 +107,7 @@ class DatasetSplit:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def load_labels_csv(csv_path: Path) -> dict[str, float]:
-    """อ่านไฟล์ labels.csv → dict {filename: count}
-
-    Parameters
-    ----------
-    csv_path : Path
-        พาธของ labels.csv ที่มีคอลัมน์ 'filename' และ 'count'
-
-    Returns
-    -------
-    labels : dict[str, float]
-        ชื่อไฟล์ → จำนวนกล่อง
-    """
+    """อ่านไฟล์ labels.csv → dict {filename: count}"""
     if not csv_path.exists():
         raise FileNotFoundError(f"[Dataset] ไม่พบไฟล์ label: {csv_path}")
 
@@ -131,7 +124,6 @@ def load_labels_csv(csv_path: Path) -> dict[str, float]:
             raw_fname = row["filename"].strip().replace("\\", "/")
             val = float(row["count"])
             labels[raw_fname] = val
-            # บันทึกด้วยชื่อไฟล์เดี่ยวด้วย เพื่อรองรับทั้ง relative path และ flat name
             labels[Path(raw_fname).name] = val
 
     print(f"[Dataset] Loaded labels: {len(labels)} entries from {csv_path.name}")
@@ -143,19 +135,7 @@ def load_dataset(
     labels_csv: Path,
     supported_extensions: Optional[set] = None,
 ) -> List[ImageLabel]:
-    """จับคู่รูปภาพทุกไฟล์ใน images_dir กับ Label ใน labels_csv
-    (รองรับทั้ง flat directory และ recursive subdirectories เช่น 1_box/, 2_box/)
-
-    Parameters
-    ----------
-    images_dir          : ไดเรกทอรีของรูปภาพที่ผ่านการเตรียมข้อมูลแล้ว
-    labels_csv          : ไฟล์ labels.csv (filename, count)
-    supported_extensions: นามสกุลที่ยอมรับ (default: .jpg, .jpeg, .png, .heic, .heif)
-
-    Returns
-    -------
-    dataset : รายการ ImageLabel ที่จับคู่ได้ครบถ้วน
-    """
+    """จับคู่รูปภาพทุกไฟล์ใน images_dir กับ Label ใน labels_csv"""
     if supported_extensions is None:
         supported_extensions = {".jpg", ".jpeg", ".png", ".heic", ".heif"}
 
@@ -164,7 +144,6 @@ def load_dataset(
     dataset: List[ImageLabel] = []
     unmatched: List[str] = []
 
-    # 1. ค้นหาไฟล์ภาพ (ตรวจทั้งระดับ root และ subdirectories)
     img_candidates: List[Path] = []
     direct_files = [
         f for f in sorted(images_dir.iterdir())
@@ -174,13 +153,11 @@ def load_dataset(
     if direct_files:
         img_candidates = direct_files
     else:
-        # หากไม่มีไฟล์ใน root ให้สแกนลึกลงไปในโฟลเดอร์ย่อย (เช่น 1_box/, 2_box/)
         img_candidates = [
             f for f in sorted(images_dir.rglob("*"))
             if f.is_file() and f.suffix.lower() in supported_extensions
         ]
 
-    # 2. จับคู่กับ Label
     for img_path in img_candidates:
         fname = img_path.name
         rel_str = str(img_path.relative_to(images_dir)).replace("\\", "/")
@@ -222,23 +199,7 @@ def split_dataset(
     val_ratio: float = 0.15,
     random_seed: int = 42,
 ) -> DatasetSplit:
-    """แบ่งข้อมูลเป็น Train / Validation / Test ด้วย Stratified Random Split
-
-    หลักการ:
-      test_ratio = 1 - train_ratio - val_ratio
-      ลำดับการแบ่ง: สุ่ม Shuffle → แบ่ง Train | Val | Test
-
-    Parameters
-    ----------
-    dataset      : รายการ ImageLabel ที่จับคู่ได้แล้ว
-    train_ratio  : สัดส่วน Train (default: 0.70 = 70%)
-    val_ratio    : สัดส่วน Validation (default: 0.15 = 15%)
-    random_seed  : seed สำหรับ reproducibility
-
-    Returns
-    -------
-    DatasetSplit : ประกอบด้วย train, val, test lists
-    """
+    """แบ่งข้อมูลเป็น Train / Validation / Test ด้วย Stratified Random Split"""
     if not (0 < train_ratio < 1 and 0 < val_ratio < 1):
         raise ValueError("[Dataset] train_ratio และ val_ratio ต้องอยู่ระหว่าง 0 ถึง 1")
     test_ratio = 1.0 - train_ratio - val_ratio
@@ -269,6 +230,54 @@ def split_dataset(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Statistical Edge Feature Extraction
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _extract_stat_features(edge_map: "np.ndarray") -> np.ndarray:
+    """สกัด 3 สถิติ Geometric/Edge จาก Edge Map
+
+    Features:
+      1. total_edge_area   — สัดส่วน pixel ที่เป็น edge (normalized 0-1)
+      2. contour_count     — จำนวน contour จาก cv2.findContours (log-scaled)
+      3. aspect_ratio      — อัตราส่วน bounding-box ของ contour ทั้งหมด
+
+    Parameters
+    ----------
+    edge_map : uint8 ndarray (H, W)  — Edge Map ก่อน normalize
+
+    Returns
+    -------
+    stat_vec : float32 ndarray (3,)
+    """
+    import cv2
+
+    h, w = edge_map.shape
+
+    # 1. Total Edge Area
+    binary = (edge_map > 0).astype(np.uint8) * 255
+    total_edge_area = float(np.count_nonzero(binary)) / float(h * w)
+
+    # 2. Contour Count + Aspect Ratio จาก bounding box ของ contours
+    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contour_count = len(contours)
+
+    if contour_count > 0:
+        # รวม bounding box ของทุก contour → compute overall aspect ratio
+        all_x = np.concatenate([c[:, 0, 0] for c in contours])
+        all_y = np.concatenate([c[:, 0, 1] for c in contours])
+        bw = float(all_x.max() - all_x.min() + 1)
+        bh = float(all_y.max() - all_y.min() + 1)
+        aspect_ratio = bw / (bh + 1e-6)
+    else:
+        aspect_ratio = 1.0
+
+    # Log-scale contour count (ทำให้ scale ใกล้เคียงกัน)
+    contour_count_log = float(np.log1p(contour_count))
+
+    return np.array([total_edge_area, contour_count_log, aspect_ratio], dtype=np.float32)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Feature Extraction (Preprocessing Pipeline Integration)
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -280,10 +289,15 @@ def extract_edge_features(
     image_size: int = 128,
     augment: bool = False,
 ) -> Tuple[np.ndarray, np.ndarray]:
-    """รันกระบวนการ Preprocessing และสกัด Raw Pixel Feature จากรูปภาพ
+    """รันกระบวนการ Preprocessing และสกัด Feature Vector ครบชุดจากรูปภาพ
+
+    Feature Vector ต่อ 1 รูป:
+      [pixel_flat(image_size²)]   → ใช้เป็น Raw Input สำหรับ SVD ในภายหลัง
+      + stat_features(3)          → [total_edge_area, log_contour_count, aspect_ratio]
 
     Pipeline: BGR → Grayscale → Resize(512) → GaussianBlur → Laplacian Edge →
               Resize(image_size) → Normalize → Flatten
+              + extract stat features จาก edge map ขนาด 512×512
 
     Parameters
     ----------
@@ -293,19 +307,19 @@ def extract_edge_features(
     clip_percentile : เปอร์เซ็นไทล์ตัด Outlier ใน Edge Map
     image_size      : ขนาดภาพที่จะนำเข้า SVD (128×128 → flatten 16384)
     augment         : True สำหรับ Train Set เท่านั้น (ห้ามใช้กับ Val หรือ Test)
-                      สร้าง 11 ภาพเพิ่ม: หมุน ±15° (crop), Flip แนวนอน,
-                      สว่าง ±25%, Contrast ±25%, Shear X ±10% (crop), Shear Y ±10% (crop)
 
     Returns
     -------
-    X        : float32 ndarray shape (N, image_size²)   — raw feature matrix
-    y        : float32 ndarray shape (N, 1)              — labels
+    X_pixel  : float32 ndarray shape (N, image_size²)  — pixel matrix สำหรับ SVD
+    X_stat   : float32 ndarray shape (N, 3)             — stat features
+    y        : float32 ndarray shape (N, 1)             — labels (จำนวนกล่อง)
     """
     import cv2
     from edge_processing import process_image_edges
     from data_ingestion import read_image
 
-    X_list: List[np.ndarray] = []
+    X_pixel_list: List[np.ndarray] = []
+    X_stat_list:  List[np.ndarray] = []
     y_list: List[float] = []
     skipped = 0
 
@@ -322,7 +336,6 @@ def extract_edge_features(
         images_to_process: List[np.ndarray] = [bgr]
 
         if augment:
-            # ย่อขนาดเป็น resize_target (512, 512) เพื่อความรวดเร็วและคงรูปทรง
             bgr_base = cv2.resize(bgr, resize_target, interpolation=cv2.INTER_AREA)
             try:
                 _, _, aug_results = run_all_augmentations(bgr_base, resize_crops_to_original=True)
@@ -332,7 +345,7 @@ def extract_edge_features(
                 print(f"[Dataset] ⚠ เกิดข้อผิดพลาดขณะทำ Augmentation {item.filename}: {e}")
 
         for img in images_to_process:
-            # Preprocessing: Gray → Resize → Blur → Edge Map
+            # Preprocessing: Gray → Resize → Blur → Edge Map (512×512 for stat)
             _, _, _, edge_map = process_image_edges(
                 img,
                 resize_target=resize_target,
@@ -340,21 +353,28 @@ def extract_edge_features(
                 clip_percentile=clip_percentile,
             )
 
+            # Statistical features จาก edge_map ขนาดเต็ม (512×512)
+            stat_vec = _extract_stat_features(edge_map)
+
             # Resize to image_size for SVD input
             small = cv2.resize(edge_map, (image_size, image_size), interpolation=cv2.INTER_AREA)
             normalized = small.astype(np.float32) / 255.0
-            X_list.append(normalized.flatten())
+
+            X_pixel_list.append(normalized.flatten())
+            X_stat_list.append(stat_vec)
             y_list.append(item.label)
 
-    if not X_list:
+    if not X_pixel_list:
         raise RuntimeError("[Dataset] ไม่สามารถประมวลผลได้เลยแม้แต่รูปเดียว")
 
     if skipped > 0:
         print(f"[Dataset] ข้ามรูปที่อ่านไม่ได้: {skipped} รูป")
 
-    X = np.stack(X_list, axis=0).astype(np.float32)
-    y = np.array(y_list, dtype=np.float32).reshape(-1, 1)
-    
-    aug_mult = f" ({len(items)} × 12 = {len(X)} ตัวอย่าง)" if augment else ""
-    print(f"[Dataset] สกัด Feature สำเร็จ: {len(X)} ตัวอย่าง{aug_mult}")
-    return X, y
+    X_pixel = np.stack(X_pixel_list, axis=0).astype(np.float32)
+    X_stat  = np.stack(X_stat_list,  axis=0).astype(np.float32)
+    y       = np.array(y_list, dtype=np.float32).reshape(-1, 1)
+
+    aug_mult = f" ({len(items)} × 12 = {len(X_pixel)} ตัวอย่าง)" if augment else ""
+    print(f"[Dataset] สกัด Feature สำเร็จ: {len(X_pixel)} ตัวอย่าง{aug_mult}")
+    print(f"[Dataset] X_pixel: {X_pixel.shape}, X_stat: {X_stat.shape}")
+    return X_pixel, X_stat, y
