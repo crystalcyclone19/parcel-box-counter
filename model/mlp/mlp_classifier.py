@@ -2,7 +2,7 @@
 """
 Multi-Layer Perceptron — Multi-class Classifier
 ================================================
-สถาปัตยกรรม 2-Layer MLP สำหรับจำแนกจำนวนกล่องพัสดุ 1–8 กล่อง
+สถาปัตยกรรม 2-Layer MLP สำหรับจำแนกจำนวนกล่องพัสดุ 1–9 กล่อง
 (Multi-class Classification ด้วย Softmax + Cross-Entropy Loss)
 
 โครงสร้าง:
@@ -11,7 +11,7 @@ Multi-Layer Perceptron — Multi-class Classifier
 
 Output:
   - Softmax probabilities : shape (N, n_classes)
-  - Predicted class index : argmax + 1  (เพื่อให้ตรงกับจำนวนกล่อง 1-8)
+  - Predicted class index : argmax + 1  (เพื่อให้ตรงกับจำนวนกล่อง 1-9)
 """
 
 from __future__ import annotations

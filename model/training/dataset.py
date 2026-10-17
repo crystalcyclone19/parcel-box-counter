@@ -323,7 +323,7 @@ def extract_edge_features(
     y_list: List[float] = []
     skipped = 0
 
-    mode_tag = "TRAIN (with 11x Augmentation)" if augment else "EVALUATION (Clean / No Augmentation)"
+    mode_tag = "TRAIN (with 9x Augmentation)" if augment else "EVALUATION (Clean / No Augmentation)"
     print(f"[Dataset] กำลังสกัด Feature: {len(items)} ภาพต้นฉบับ [{mode_tag}] ...")
 
     for item in items:
@@ -374,7 +374,7 @@ def extract_edge_features(
     X_stat  = np.stack(X_stat_list,  axis=0).astype(np.float32)
     y       = np.array(y_list, dtype=np.float32).reshape(-1, 1)
 
-    aug_mult = f" ({len(items)} × 12 = {len(X_pixel)} ตัวอย่าง)" if augment else ""
+    aug_mult = f" ({len(items)} × 10 = {len(X_pixel)} ตัวอย่าง)" if augment else ""
     print(f"[Dataset] สกัด Feature สำเร็จ: {len(X_pixel)} ตัวอย่าง{aug_mult}")
     print(f"[Dataset] X_pixel: {X_pixel.shape}, X_stat: {X_stat.shape}")
     return X_pixel, X_stat, y

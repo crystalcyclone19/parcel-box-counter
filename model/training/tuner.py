@@ -16,7 +16,7 @@ Fixed Parameters:
   n_svd_features  : 64            (Top-64 SVD components)
   stat_features   : 3             (total_edge_area, log_contour_count, aspect_ratio)
   input_dim       : 64 + 3 = 67
-  n_classes       : 8             (กล่อง 1-8)
+  n_classes       : 9             (กล่อง 1-9)
   blur_ksize      : 5
   epochs          : 500 (max)
   patience        : 30
@@ -64,7 +64,7 @@ DEFAULT_SEARCH_SPACE: Dict[str, List[Any]] = {
 # Fixed Constants
 FIXED_N_SVD_FEATURES:  int   = 64
 FIXED_N_STAT_FEATURES: int   = 3       # total_edge_area, log_contour_count, aspect_ratio
-FIXED_N_CLASSES:       int   = 8       # กล่อง 1-8
+FIXED_N_CLASSES:       int   = 9       # กล่อง 1-9
 FIXED_BLUR_KSIZE:      int   = 5
 FIXED_MAX_EPOCHS:      int   = 500
 FIXED_PATIENCE:        int   = 30
@@ -233,7 +233,7 @@ class GridSearchTuner:
     search_space      : dict ของ Tunable Parameters
     evaluator         : Evaluator instance
     n_svd_features    : จำนวน SVD components (default: 64)
-    n_classes         : จำนวนคลาส (default: 8)
+    n_classes         : จำนวนคลาส (default: 9)
     random_seed       : seed สำหรับ reproducibility
     augment_train     : True = ทำ Augmentation บน Train Set (default: True)
     """

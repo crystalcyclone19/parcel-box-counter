@@ -47,27 +47,27 @@ print(f"  hidden_dim   : {sp['hidden_dim']}")
 print()
 print("Testing Xavier Init for Multi-class MLP...")
 rng = np.random.default_rng(42)
-W1, b1, W2, b2 = init_weights_xavier(input_dim=67, hidden_dim=64, n_classes=8, rng=rng)
+W1, b1, W2, b2 = init_weights_xavier(input_dim=67, hidden_dim=64, n_classes=9, rng=rng)
 print(f"  W1 shape: {W1.shape}, std: {W1.std():.4f}")
 print(f"  b1 shape: {b1.shape}")
 print(f"  W2 shape: {W2.shape}, std: {W2.std():.4f}")
 print(f"  b2 shape: {b2.shape}")
 assert W1.shape == (67, 64)
 assert b1.shape == (64,)
-assert W2.shape == (64, 8)
-assert b2.shape == (8,)
+assert W2.shape == (64, 9)
+assert b2.shape == (9,)
 
 print()
 print("Testing Forward Pass, Loss, and Backward Pass...")
 X_syn = rng.standard_normal((10, 67)).astype(np.float32)
-y_syn = rng.integers(0, 8, size=10).astype(np.int32)
+y_syn = rng.integers(0, 9, size=10).astype(np.int32)
 probs, h, z1, mask = forward(X_syn, W1, b1, W2, b2, dropout_rate=0.3, training=True, rng=rng)
 print(f"  probs shape: {probs.shape}, prob sum per row: {probs.sum(axis=1)[:3]}")
 loss = cross_entropy_loss(probs, y_syn)
 print(f"  Cross-Entropy Loss: {loss:.4f}")
 dW1, db1, dW2, db2 = backward(X_syn, probs, y_syn, W1, W2, h, z1, mask)
 print(f"  dW1 shape: {dW1.shape}, dW2 shape: {dW2.shape}")
-assert probs.shape == (10, 8)
+assert probs.shape == (10, 9)
 assert dW1.shape == W1.shape
 assert dW2.shape == W2.shape
 
@@ -75,13 +75,13 @@ print()
 print("Testing Trainer.fit() with synthetic data...")
 n_train, n_val, d = 40, 10, 67
 Z_train = rng.standard_normal((n_train, d)).astype(np.float32)
-# y values are box counts 1..8
-y_train = rng.integers(1, 9, (n_train, 1)).astype(np.float32)
+# y values are box counts 1..9
+y_train = rng.integers(1, 10, (n_train, 1)).astype(np.float32)
 Z_val = rng.standard_normal((n_val, d)).astype(np.float32)
-y_val = rng.integers(1, 9, (n_val, 1)).astype(np.float32)
+y_val = rng.integers(1, 10, (n_val, 1)).astype(np.float32)
 
 trainer = Trainer(
-    n_classes=8,
+    n_classes=9,
     hidden_dim=32,
     dropout_rate=0.3,
     max_epochs=20,
@@ -93,18 +93,19 @@ result = trainer.fit(Z_train, y_train, Z_val, y_val, learning_rate=0.01, batch_s
 print(f"  Best Val CE  : {result.best_val_ce:.6f} @ epoch {result.best_epoch}")
 print(f"  Stopped Early: {result.stopped_early}")
 print(f"  W1 shape     : {result.W1.shape}, W2 shape: {result.W2.shape}")
+assert result.W2.shape == (32, 9)
 
 print()
 print("Testing compute_metrics()...")
 metrics = compute_metrics(
     Z_val, y_val,
     result.W1, result.b1, result.W2, result.b2,
-    n_classes=8,
+    n_classes=9,
     train_ce=result.train_loss_history[-1],
 )
 print(metrics.summary())
 print("Confusion Matrix:")
-print(metrics.confusion_str(8))
+print(metrics.confusion_str(9))
 
 print()
 print("Testing SVD & Stat Normalizer...")
@@ -137,7 +138,7 @@ mock_params = ModelParameters(
     svd_s=svd.S,
     stat_mean=svd.stat_mean,
     stat_std=svd.stat_std,
-    n_classes=8,
+    n_classes=9,
     hidden_dim=32,
     W1=result.W1,
     b1=result.b1,
@@ -151,9 +152,9 @@ pred_result = predictor.predict(fake_img)
 print(f"  Predicted Boxes: {pred_result.predicted_boxes} (confidence: {pred_result.confidence*100:.1f}%)")
 print(f"  Class Probs len: {len(pred_result.class_probabilities)}")
 print(f"  Logits len     : {len(pred_result.logits)}")
-assert 1 <= pred_result.predicted_boxes <= 8
-assert len(pred_result.class_probabilities) == 8
-assert len(pred_result.logits) == 8
+assert 1 <= pred_result.predicted_boxes <= 9
+assert len(pred_result.class_probabilities) == 9
+assert len(pred_result.logits) == 9
 assert np.isclose(sum(pred_result.class_probabilities), 1.0, atol=1e-4)
 
 print()

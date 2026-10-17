@@ -96,8 +96,8 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # ── Model Parameters ─────────────────────────────────────────────────────
     parser.add_argument(
-        "--n-classes", type=int, default=8,
-        help="จำนวนคลาส (จำนวนกล่องสูงสุด, default: 8)",
+        "--n-classes", type=int, default=9,
+        help="จำนวนคลาส (จำนวนกล่องสูงสุด, default: 9)",
     )
 
     # ── Search Space Override (Optional) ─────────────────────────────────────
@@ -159,7 +159,7 @@ def run_auto_train(args: argparse.Namespace) -> None:
     print(f"\n[Stage 1] Loading data & splitting...")
     print(f"  • Model Type             : Multi-class Classification (กล่อง 1–{args.n_classes})")
     print(f"  • Feature Vector         : SVD(64) + StatFeatures(3) = 67 dims")
-    print(f"  • Data Augmentation (Train) : {'ENABLED (11x independent variants)' if augment_train else 'DISABLED'}")
+    print(f"  • Data Augmentation (Train) : {'ENABLED (9x independent variants)' if augment_train else 'DISABLED'}")
     print(f"  • Data Augmentation (Val)   : DISABLED")
     print(f"  • Data Augmentation (Test)  : DISABLED")
 

@@ -124,7 +124,7 @@ class ModelParameters:
     stat_std:        Optional[np.ndarray]  = field(default=None, repr=False)
 
     # MLP Classifier Weights
-    n_classes:       int                   = 8
+    n_classes:       int                   = 9
     hidden_dim:      int                   = 64
     W1:              Optional[np.ndarray]  = field(default=None, repr=False)
     b1:              Optional[np.ndarray]  = field(default=None, repr=False)
@@ -166,7 +166,7 @@ class ModelParameters:
         clip_percentile = float(pre_cfg.get("clip_percentile", 98.0))
         image_size_svd  = int(pre_cfg.get("image_size_svd", 128))
         n_svd_features  = int(mdl_cfg.get("n_svd_features", 64))
-        n_classes       = int(mdl_cfg.get("n_classes", 8))
+        n_classes       = int(mdl_cfg.get("n_classes", 9))
 
         # Load weights
         with open(weights_file, "r", encoding="utf-8") as f:
@@ -251,10 +251,10 @@ class ModelParameters:
 class PredictionOutput:
     """ผลลัพธ์การทำนายครบชุด"""
     # Prediction
-    predicted_boxes:      int            # จำนวนกล่องที่ทำนาย (1-8)
-    predicted_class_idx:  int            # 0-indexed class (0-7)
+    predicted_boxes:      int            # จำนวนกล่องที่ทำนาย (1-9)
+    predicted_class_idx:  int            # 0-indexed class (0-8)
     confidence:           float          # Softmax probability ของ class ที่ทำนาย
-    class_probabilities:  List[float]    # Softmax probabilities ทุกคลาส (1-8)
+    class_probabilities:  List[float]    # Softmax probabilities ทุกคลาส (1-9)
 
     # Feature Vector
     svd_latent_vector:    List[float]    # Top-64 SVD components

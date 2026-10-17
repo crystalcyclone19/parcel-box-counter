@@ -67,7 +67,7 @@ class MetricsResult:
             f"  Gen. Gap (CE)   : {gap_str}\n"
         )
 
-    def confusion_str(self, n_classes: int = 8) -> str:
+    def confusion_str(self, n_classes: int = 9) -> str:
         """แสดง Confusion Matrix แบบข้อความ"""
         header = "Pred→ " + "  ".join(f"{i+1:2d}" for i in range(n_classes))
         rows = [header, "-" * len(header)]
@@ -115,7 +115,7 @@ def compute_metrics(
     b1: np.ndarray,
     W2: np.ndarray,
     b2: np.ndarray,
-    n_classes: int = 8,
+    n_classes: int = 9,
     train_ce: Optional[float] = None,
 ) -> MetricsResult:
     """คำนวณ Metrics ครบชุดสำหรับ Dataset ที่กำหนด
@@ -123,10 +123,10 @@ def compute_metrics(
     Parameters
     ----------
     Z          : float32 (N, n_features) — SVD+Stat feature matrix
-    y          : float32 (N, 1)          — Ground Truth (จำนวนกล่อง 1-8)
+    y          : float32 (N, 1)          — Ground Truth (จำนวนกล่อง 1-9)
     W1, b1     : Layer 1 weights & bias
     W2, b2     : Layer 2 weights & bias
-    n_classes  : จำนวนคลาส (default: 8)
+    n_classes  : จำนวนคลาส (default: 9)
     train_ce   : ถ้าระบุ จะคำนวณ Generalization Gap
 
     Returns

@@ -49,7 +49,7 @@ class TrainResult:
     val_loss_history: List[float]   # Val CE ทุก Epoch
     stopped_early: bool             # True = หยุดก่อนครบ max_epochs
     total_epochs_run: int           # จำนวน Epoch ที่รันจริง
-    n_classes: int = 8              # จำนวนคลาส
+    n_classes: int = 9              # จำนวนคลาส
     hidden_dim: int = 64            # Hidden layer size
 
 
@@ -97,13 +97,13 @@ def _compute_val_ce(
 # Label Conversion Helper
 # ─────────────────────────────────────────────────────────────────────────────
 
-def labels_to_class_idx(y: np.ndarray, n_classes: int = 8) -> np.ndarray:
-    """แปลง label (จำนวนกล่อง 1-8) → class index 0-indexed
+def labels_to_class_idx(y: np.ndarray, n_classes: int = 9) -> np.ndarray:
+    """แปลง label (จำนวนกล่อง 1-9) → class index 0-indexed
 
     Parameters
     ----------
-    y        : float32 (N, 1) หรือ (N,) — จำนวนกล่อง (1-8)
-    n_classes: จำนวนคลาส (default 8)
+    y        : float32 (N, 1) หรือ (N,) — จำนวนกล่อง (1-9)
+    n_classes: จำนวนคลาส (default 9)
 
     Returns
     -------
@@ -123,7 +123,7 @@ class Trainer:
 
     Parameters
     ----------
-    n_classes   : จำนวนคลาส (default: 8 สำหรับ 1-8 กล่อง)
+    n_classes   : จำนวนคลาส (default: 9 สำหรับ 1-9 กล่อง)
     hidden_dim  : ขนาด Hidden Layer (default: 64)
     dropout_rate: Dropout rate (default: 0.3)
     max_epochs  : จำนวน Epoch สูงสุด (default: 500)
@@ -134,7 +134,7 @@ class Trainer:
 
     def __init__(
         self,
-        n_classes: int = 8,
+        n_classes: int = 9,
         hidden_dim: int = 64,
         dropout_rate: float = 0.3,
         max_epochs: int = 500,
@@ -164,7 +164,7 @@ class Trainer:
         Parameters
         ----------
         Z_train       : float32 (N_train, n_features) — SVD + Stat features
-        y_train       : float32 (N_train, 1)          — จำนวนกล่อง (1-8)
+        y_train       : float32 (N_train, 1)          — จำนวนกล่อง (1-9)
         Z_val         : float32 (N_val, n_features)
         y_val         : float32 (N_val, 1)
         learning_rate : Learning Rate

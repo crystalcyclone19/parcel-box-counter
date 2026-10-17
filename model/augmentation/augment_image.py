@@ -3,15 +3,14 @@
 Independent Image Augmentation Suite
 ====================================
 เครื่องมือสำหรับทำ Data Augmentation แยกแต่ละวิธีโดยอิสระจากภาพต้นฉบับ (ห้ามทำรวมหรือต่อๆ กัน):
-  2.1 หมุน +-15 องศา (Crop เอาเฉพาะพื้นที่จริงที่เหลือ ไม่ติดขอบดำ)
-  2.2 Horizontal Flip (พลิกภาพแนวนอน ซ้าย-ขวา)
-  2.3 ปรับความสว่าง +-25% (Brightness adjustment)
-  2.4 ปรับ Contrast +-25% (Contrast adjustment)
-  2.5 Shear X +-10% (Crop เอาเฉพาะพื้นที่จริงที่เหลือ ไม่ติดขอบดำ)
-  2.6 Shear Y +-10% (Crop เอาเฉพาะพื้นที่จริงที่เหลือ ไม่ติดขอบดำ)
+  2.1 Horizontal Flip (พลิกภาพแนวนอน ซ้าย-ขวา)
+  2.2 ปรับความสว่าง +-25% (Brightness adjustment)
+  2.3 ปรับ Contrast +-25% (Contrast adjustment)
+  2.4 Shear X +-10% (Crop เอาเฉพาะพื้นที่จริงที่เหลือ ไม่ติดขอบดำ)
+  2.5 Shear Y +-10% (Crop เอาเฉพาะพื้นที่จริงที่เหลือ ไม่ติดขอบดำ)
 
 ผลลัพธ์:
-  - บันทึกภาพผลลัพธ์แยกแต่ละวิธี (รวม 11 ภาพ Augmentation + 1 ภาพ Original)
+  - บันทึกภาพผลลัพธ์แยกแต่ละวิธี (รวม 9 ภาพ Augmentation + 1 ภาพ Original = 10 ภาพ)
   - บันทึกภาพรวมสรุป (Summary Grid Comparison) สวยงามความละเอียดสูง
   - บันทึกรายงาน metadata ในไฟล์ augmentation_manifest.json
 
@@ -367,7 +366,7 @@ def run_all_augmentations(
     -------
     original_image : np.ndarray
     original_meta  : dict
-    results        : List[AugmentationResult] รวม 11 วิธี
+    results        : List[AugmentationResult] รวม 9 วิธี
     """
     if isinstance(image_input, (str, Path)):
         orig_img, orig_meta = read_image(image_input)
@@ -383,94 +382,69 @@ def run_all_augmentations(
     results: List[AugmentationResult] = []
 
     # ─────────────────────────────────────────────────────────────────────────
-    # 2.1 หมุน +-15 องศา (crop เอาพื้นที่จริงที่เหลือ)
-    # ─────────────────────────────────────────────────────────────────────────
-    img_rot_p15, meta_rot_p15 = augment_rotate_and_crop(
-        orig_img, angle_deg=+15.0, resize_to_original=resize_crops_to_original
-    )
-    results.append(AugmentationResult(
-        key="01_rotate_plus_15",
-        title="2.1 Rotate +15 deg (Cropped)",
-        tag="2.1 Rotate +15°",
-        image=img_rot_p15,
-        metadata=meta_rot_p15,
-    ))
-
-    img_rot_m15, meta_rot_m15 = augment_rotate_and_crop(
-        orig_img, angle_deg=-15.0, resize_to_original=resize_crops_to_original
-    )
-    results.append(AugmentationResult(
-        key="02_rotate_minus_15",
-        title="2.1 Rotate -15 deg (Cropped)",
-        tag="2.1 Rotate -15°",
-        image=img_rot_m15,
-        metadata=meta_rot_m15,
-    ))
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # 2.2 Horizontal Flip
+    # 2.1 Horizontal Flip
     # ─────────────────────────────────────────────────────────────────────────
     img_hflip, meta_hflip = augment_horizontal_flip(orig_img)
     results.append(AugmentationResult(
-        key="03_horizontal_flip",
-        title="2.2 Horizontal Flip",
-        tag="2.2 Horizontal Flip",
+        key="01_horizontal_flip",
+        title="2.1 Horizontal Flip",
+        tag="2.1 Horizontal Flip",
         image=img_hflip,
         metadata=meta_hflip,
     ))
 
     # ─────────────────────────────────────────────────────────────────────────
-    # 2.3 ปรับความสว่าง +-25%
+    # 2.2 ปรับความสว่าง +-25%
     # ─────────────────────────────────────────────────────────────────────────
     img_bright_p25, meta_bright_p25 = augment_brightness(orig_img, factor=1.25)
     results.append(AugmentationResult(
-        key="04_brightness_plus_25",
-        title="2.3 Brightness +25%",
-        tag="2.3 Brightness +25%",
+        key="02_brightness_plus_25",
+        title="2.2 Brightness +25%",
+        tag="2.2 Brightness +25%",
         image=img_bright_p25,
         metadata=meta_bright_p25,
     ))
 
     img_bright_m25, meta_bright_m25 = augment_brightness(orig_img, factor=0.75)
     results.append(AugmentationResult(
-        key="05_brightness_minus_25",
-        title="2.3 Brightness -25%",
-        tag="2.3 Brightness -25%",
+        key="03_brightness_minus_25",
+        title="2.2 Brightness -25%",
+        tag="2.2 Brightness -25%",
         image=img_bright_m25,
         metadata=meta_bright_m25,
     ))
 
     # ─────────────────────────────────────────────────────────────────────────
-    # 2.4 ปรับ Contrast +-25%
+    # 2.3 ปรับ Contrast +-25%
     # ─────────────────────────────────────────────────────────────────────────
     img_contrast_p25, meta_contrast_p25 = augment_contrast(orig_img, factor=1.25)
     results.append(AugmentationResult(
-        key="06_contrast_plus_25",
-        title="2.4 Contrast +25%",
-        tag="2.4 Contrast +25%",
+        key="04_contrast_plus_25",
+        title="2.3 Contrast +25%",
+        tag="2.3 Contrast +25%",
         image=img_contrast_p25,
         metadata=meta_contrast_p25,
     ))
 
     img_contrast_m25, meta_contrast_m25 = augment_contrast(orig_img, factor=0.75)
     results.append(AugmentationResult(
-        key="07_contrast_minus_25",
-        title="2.4 Contrast -25%",
-        tag="2.4 Contrast -25%",
+        key="05_contrast_minus_25",
+        title="2.3 Contrast -25%",
+        tag="2.3 Contrast -25%",
         image=img_contrast_m25,
         metadata=meta_contrast_m25,
     ))
 
     # ─────────────────────────────────────────────────────────────────────────
-    # 2.5 Shear X +-10% (crop เอาพื้นที่จริงที่เหลือ)
+    # 2.4 Shear X +-10% (crop เอาพื้นที่จริงที่เหลือ)
     # ─────────────────────────────────────────────────────────────────────────
     img_shear_x_p10, meta_shear_x_p10 = augment_shear_x_and_crop(
         orig_img, shear_factor=+0.10, resize_to_original=resize_crops_to_original
     )
     results.append(AugmentationResult(
-        key="08_shear_x_plus_10",
-        title="2.5 Shear X +10% (Cropped)",
-        tag="2.5 Shear X +10%",
+        key="06_shear_x_plus_10",
+        title="2.4 Shear X +10% (Cropped)",
+        tag="2.4 Shear X +10%",
         image=img_shear_x_p10,
         metadata=meta_shear_x_p10,
     ))
@@ -479,23 +453,23 @@ def run_all_augmentations(
         orig_img, shear_factor=-0.10, resize_to_original=resize_crops_to_original
     )
     results.append(AugmentationResult(
-        key="09_shear_x_minus_10",
-        title="2.5 Shear X -10% (Cropped)",
-        tag="2.5 Shear X -10%",
+        key="07_shear_x_minus_10",
+        title="2.4 Shear X -10% (Cropped)",
+        tag="2.4 Shear X -10%",
         image=img_shear_x_m10,
         metadata=meta_shear_x_m10,
     ))
 
     # ─────────────────────────────────────────────────────────────────────────
-    # 2.6 Shear Y +-10% (crop เอาพื้นที่จริงที่เหลือ)
+    # 2.5 Shear Y +-10% (crop เอาพื้นที่จริงที่เหลือ)
     # ─────────────────────────────────────────────────────────────────────────
     img_shear_y_p10, meta_shear_y_p10 = augment_shear_y_and_crop(
         orig_img, shear_factor=+0.10, resize_to_original=resize_crops_to_original
     )
     results.append(AugmentationResult(
-        key="10_shear_y_plus_10",
-        title="2.6 Shear Y +10% (Cropped)",
-        tag="2.6 Shear Y +10%",
+        key="08_shear_y_plus_10",
+        title="2.5 Shear Y +10% (Cropped)",
+        tag="2.5 Shear Y +10%",
         image=img_shear_y_p10,
         metadata=meta_shear_y_p10,
     ))
@@ -504,9 +478,9 @@ def run_all_augmentations(
         orig_img, shear_factor=-0.10, resize_to_original=resize_crops_to_original
     )
     results.append(AugmentationResult(
-        key="11_shear_y_minus_10",
-        title="2.6 Shear Y -10% (Cropped)",
-        tag="2.6 Shear Y -10%",
+        key="09_shear_y_minus_10",
+        title="2.5 Shear Y -10% (Cropped)",
+        tag="2.5 Shear Y -10%",
         image=img_shear_y_m10,
         metadata=meta_shear_y_m10,
     ))
@@ -523,12 +497,12 @@ def create_summary_grid(
     results: List[AugmentationResult],
     cell_width: int = 400,
     cell_height: int = 500,
-    cols: int = 4,
+    cols: int = 5,
     main_title: str = "INDEPENDENT IMAGE AUGMENTATION SUITE (ALL SEPARATE)",
 ) -> np.ndarray:
-    """สร้างภาพรวมสรุป (Summary Grid Comparison) รวม 12 ภาพ (Original + 11 Augmentations)
+    """สร้างภาพรวมสรุป (Summary Grid Comparison) รวม 10 ภาพ (Original + 9 Augmentations)
 
-    Grid 3 แถว x 4 คอลัมน์ พร้อมแถบชื่อกำกับแต่ละภาพและขอบตกแต่งอย่างสวยงาม
+    Grid 2 แถว x 5 คอลัมน์ พร้อมแถบชื่อกำกับแต่ละภาพและขอบตกแต่งอย่างสวยงาม
     """
     # Item 0 is Original
     all_items = [
@@ -568,7 +542,7 @@ def create_summary_grid(
     )
     cv2.putText(
         canvas,
-        "Total 12 Variants | Each operation applied independently to original image (no chaining)",
+        "Total 10 Variants | Each operation applied independently to original image (no chaining)",
         (padding + 10, 68),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.48,
