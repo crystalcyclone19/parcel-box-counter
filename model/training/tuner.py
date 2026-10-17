@@ -31,11 +31,16 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
 _TRAINING_DIR = Path(__file__).resolve().parent
+if str(_TRAINING_DIR) not in sys.path:
+    sys.path.insert(0, str(_TRAINING_DIR))
 _PREPROCESSING_DIR = _TRAINING_DIR.parent / "preprocessing"
 if str(_PREPROCESSING_DIR) not in sys.path:
     sys.path.insert(0, str(_PREPROCESSING_DIR))
 
-from dataset import extract_edge_features, DatasetSplit
+try:
+    from .dataset import extract_edge_features, DatasetSplit
+except ImportError:
+    from dataset import extract_edge_features, DatasetSplit
 from trainer import Trainer, TrainResult
 from evaluator import Evaluator, compute_metrics, MetricsResult
 
@@ -195,6 +200,7 @@ class GridSearchTuner:
         evaluator: Optional[Evaluator] = None,
         n_svd_features: int = FIXED_N_SVD_FEATURES,
         random_seed: int = 42,
+        augment_train: bool = True,
     ):
         self.split = split
         self.k = k
@@ -202,6 +208,8 @@ class GridSearchTuner:
         self.evaluator = evaluator or Evaluator(primary_metric="mse")
         self.n_svd_features = n_svd_features
         self.random_seed = random_seed
+        self.augment_train = augment_train
+        self.n_train_effective = split.n_train
 
         # ผลลัพธ์ทั้งหมด
         self.all_trials: List[TrialResult] = []
@@ -226,26 +234,35 @@ class GridSearchTuner:
         print(f"\n  [Cache] Preprocessing clip_percentile={clip_percentile:.0f}% ...")
         t0 = time.time()
 
+        # 1. Train Set: ทำ Augmentation เฉพาะส่วนนี้ (11x รูปแบบอิสระ)
         X_train, y_train = extract_edge_features(
             self.split.train,
             resize_target=FIXED_RESIZE_TARGET,
             blur_ksize=FIXED_BLUR_KSIZE,
             clip_percentile=clip_percentile,
             image_size=FIXED_IMAGE_SIZE,
+            augment=self.augment_train,
         )
+        self.n_train_effective = len(X_train)
+
+        # 2. Validation Set: ห้ามทำ Augmentation (สะอาด 100%)
         X_val, y_val = extract_edge_features(
             self.split.val,
             resize_target=FIXED_RESIZE_TARGET,
             blur_ksize=FIXED_BLUR_KSIZE,
             clip_percentile=clip_percentile,
             image_size=FIXED_IMAGE_SIZE,
+            augment=False,
         )
+
+        # 3. Test Set: ห้ามทำ Augmentation (สะอาด 100%)
         X_test, y_test = extract_edge_features(
             self.split.test,
             resize_target=FIXED_RESIZE_TARGET,
             blur_ksize=FIXED_BLUR_KSIZE,
             clip_percentile=clip_percentile,
             image_size=FIXED_IMAGE_SIZE,
+            augment=False,
         )
 
         # Fit SVD บน Train Set เท่านั้น (Data Leakage Prevention)

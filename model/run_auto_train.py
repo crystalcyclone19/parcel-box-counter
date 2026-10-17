@@ -23,6 +23,14 @@ import sys
 import time
 from pathlib import Path
 
+# Enable UTF-8 for console output on Windows
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 # ── เพิ่ม path ที่จำเป็นทั้งหมด ────────────────────────────────────────────────
 _MODEL_DIR        = Path(__file__).resolve().parent
 _TRAINING_DIR     = _MODEL_DIR / "training"
@@ -109,6 +117,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Primary metric for champion model selection",
     )
 
+    # ── Augmentation Options ──────────────────────────────────────────────────
+    parser.add_argument(
+        "--no-augment", action="store_true",
+        help="ปิดการทำ Data Augmentation บน Train Set (ค่าเริ่มต้น: เปิด Augmentation 11 รูปแบบสำหรับ Train Set เสมอ)",
+    )
+
     return parser
 
 
@@ -124,12 +138,16 @@ def run_auto_train(args: argparse.Namespace) -> None:
     from model_registry import ModelRegistry
 
     total_start = time.time()
+    augment_train = not args.no_augment
 
     # ── Stage 1: Load & Split Dataset ─────────────────────────────────────────
     print(f"\n{'='*70}")
     print(f"  PARCEL BOX COUNTER — AUTOMATED TRAINING & MODEL SELECTION")
     print(f"{'='*70}")
     print(f"\n[Stage 1] Loading data & splitting...")
+    print(f"  • Data Augmentation (Train) : {'ENABLED (11x independent variants: rot+-15°, flip, bright/contrast+-25%, shear x/y+-10%)' if augment_train else 'DISABLED'}")
+    print(f"  • Data Augmentation (Val)   : DISABLED (Strictly un-augmented raw data)")
+    print(f"  • Data Augmentation (Test)  : DISABLED (Strictly un-augmented raw data)")
 
     dataset = load_dataset(
         images_dir=args.images_dir,
@@ -156,6 +174,7 @@ def run_auto_train(args: argparse.Namespace) -> None:
         search_space=search_space,
         evaluator=evaluator,
         random_seed=args.seed,
+        augment_train=augment_train,
     )
     tuner.run()
 

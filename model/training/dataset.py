@@ -29,10 +29,24 @@ if sys.platform == "win32":
 
 import numpy as np
 
-# ── เพิ่ม preprocessing/ เข้า sys.path ───────────────────────────────────────
-_PREPROCESSING_DIR = Path(__file__).resolve().parent.parent / "preprocessing"
-if str(_PREPROCESSING_DIR) not in sys.path:
-    sys.path.insert(0, str(_PREPROCESSING_DIR))
+# ── เพิ่ม preprocessing/, augmentation/, tools/ เข้า sys.path ─────────────────
+_TRAINING_DIR = Path(__file__).resolve().parent
+_MODEL_DIR = _TRAINING_DIR.parent
+_PREPROCESSING_DIR = _MODEL_DIR / "preprocessing"
+_AUGMENTATION_DIR = _MODEL_DIR / "augmentation"
+_TOOLS_DIR = _MODEL_DIR.parent / "tools"
+
+for p in (_PREPROCESSING_DIR, _AUGMENTATION_DIR, _TOOLS_DIR):
+    if p.exists() and str(p) not in sys.path:
+        sys.path.insert(0, str(p))
+
+try:
+    from augment_image import run_all_augmentations
+except ImportError:
+    try:
+        from model.augmentation.augment_image import run_all_augmentations
+    except ImportError:
+        from tools.augment_image import run_all_augmentations
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -264,6 +278,7 @@ def extract_edge_features(
     blur_ksize: int = 5,
     clip_percentile: float = 98.0,
     image_size: int = 128,
+    augment: bool = False,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """รันกระบวนการ Preprocessing และสกัด Raw Pixel Feature จากรูปภาพ
 
@@ -277,6 +292,9 @@ def extract_edge_features(
     blur_ksize      : kernel Gaussian Blur (default: 5)
     clip_percentile : เปอร์เซ็นไทล์ตัด Outlier ใน Edge Map
     image_size      : ขนาดภาพที่จะนำเข้า SVD (128×128 → flatten 16384)
+    augment         : True สำหรับ Train Set เท่านั้น (ห้ามใช้กับ Val หรือ Test)
+                      สร้าง 11 ภาพเพิ่ม: หมุน ±15° (crop), Flip แนวนอน,
+                      สว่าง ±25%, Contrast ±25%, Shear X ±10% (crop), Shear Y ±10% (crop)
 
     Returns
     -------
@@ -291,6 +309,9 @@ def extract_edge_features(
     y_list: List[float] = []
     skipped = 0
 
+    mode_tag = "TRAIN (with 11x Augmentation)" if augment else "EVALUATION (Clean / No Augmentation)"
+    print(f"[Dataset] กำลังสกัด Feature: {len(items)} ภาพต้นฉบับ [{mode_tag}] ...")
+
     for item in items:
         bgr = read_image(item.image_path)
         if bgr is None:
@@ -298,19 +319,32 @@ def extract_edge_features(
             skipped += 1
             continue
 
-        # Preprocessing: Gray → Resize → Blur → Edge Map
-        _, _, _, edge_map = process_image_edges(
-            bgr,
-            resize_target=resize_target,
-            blur_ksize=blur_ksize,
-            clip_percentile=clip_percentile,
-        )
+        images_to_process: List[np.ndarray] = [bgr]
 
-        # Resize to image_size for SVD input
-        small = cv2.resize(edge_map, (image_size, image_size), interpolation=cv2.INTER_AREA)
-        normalized = small.astype(np.float32) / 255.0
-        X_list.append(normalized.flatten())
-        y_list.append(item.label)
+        if augment:
+            # ย่อขนาดเป็น resize_target (512, 512) เพื่อความรวดเร็วและคงรูปทรง
+            bgr_base = cv2.resize(bgr, resize_target, interpolation=cv2.INTER_AREA)
+            try:
+                _, _, aug_results = run_all_augmentations(bgr_base, resize_crops_to_original=True)
+                for aug_item in aug_results:
+                    images_to_process.append(aug_item.image)
+            except Exception as e:
+                print(f"[Dataset] ⚠ เกิดข้อผิดพลาดขณะทำ Augmentation {item.filename}: {e}")
+
+        for img in images_to_process:
+            # Preprocessing: Gray → Resize → Blur → Edge Map
+            _, _, _, edge_map = process_image_edges(
+                img,
+                resize_target=resize_target,
+                blur_ksize=blur_ksize,
+                clip_percentile=clip_percentile,
+            )
+
+            # Resize to image_size for SVD input
+            small = cv2.resize(edge_map, (image_size, image_size), interpolation=cv2.INTER_AREA)
+            normalized = small.astype(np.float32) / 255.0
+            X_list.append(normalized.flatten())
+            y_list.append(item.label)
 
     if not X_list:
         raise RuntimeError("[Dataset] ไม่สามารถประมวลผลได้เลยแม้แต่รูปเดียว")
@@ -320,4 +354,7 @@ def extract_edge_features(
 
     X = np.stack(X_list, axis=0).astype(np.float32)
     y = np.array(y_list, dtype=np.float32).reshape(-1, 1)
+    
+    aug_mult = f" ({len(items)} × 12 = {len(X)} ตัวอย่าง)" if augment else ""
+    print(f"[Dataset] สกัด Feature สำเร็จ: {len(X)} ตัวอย่าง{aug_mult}")
     return X, y

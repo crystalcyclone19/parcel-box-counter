@@ -178,9 +178,13 @@ class ModelRegistry:
             "session":          self.session_name,
             "trained_at":       datetime.now().isoformat(),
             "dataset": {
-                "n_train":       tuner.split.n_train,
-                "n_val":         tuner.split.n_val,
-                "n_test":        tuner.split.n_test,
+                "n_train_raw":       tuner.split.n_train,
+                "n_train_effective": getattr(tuner, "n_train_effective", tuner.split.n_train),
+                "n_val":             tuner.split.n_val,
+                "n_test":            tuner.split.n_test,
+                "train_augmented":   getattr(tuner, "augment_train", True),
+                "val_augmented":     False,
+                "test_augmented":    False,
             },
             "champion": {
                 "trial_id":       best.trial_id,

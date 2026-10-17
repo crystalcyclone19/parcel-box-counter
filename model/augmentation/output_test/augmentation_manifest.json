@@ -1,0 +1,193 @@
+{
+  "source_image": {
+    "filename": "IMG_6510.jpg",
+    "path": "C:\\Users\\DELL\\Downloads\\CNNs\\parcel-box-counter\\dataset\\dataset\\1_box\\IMG_6510.jpg",
+    "height": 5712,
+    "width": 4284,
+    "channels": 3,
+    "aspect_ratio": 0.75
+  },
+  "timestamp": "2026-10-17T12:13:32.508712",
+  "resize_crops_to_original": true,
+  "total_variants": 12,
+  "augmentations": [
+    {
+      "key": "01_rotate_plus_15",
+      "title": "2.1 Rotate +15 deg (Cropped)",
+      "output_file": "C:\\Users\\DELL\\Downloads\\CNNs\\parcel-box-counter\\tools\\output_test\\01_rotate_plus_15.jpg",
+      "metadata": {
+        "operation": "rotate_+15deg",
+        "angle_deg": 15.0,
+        "crop_box": {
+          "x1": 508,
+          "y1": 678,
+          "x2": 3775,
+          "y2": 5034,
+          "w": 3267,
+          "h": 4356
+        },
+        "crop_scale_ratio": 0.7628,
+        "resized_to_original": true
+      }
+    },
+    {
+      "key": "02_rotate_minus_15",
+      "title": "2.1 Rotate -15 deg (Cropped)",
+      "output_file": "C:\\Users\\DELL\\Downloads\\CNNs\\parcel-box-counter\\tools\\output_test\\02_rotate_minus_15.jpg",
+      "metadata": {
+        "operation": "rotate_-15deg",
+        "angle_deg": -15.0,
+        "crop_box": {
+          "x1": 508,
+          "y1": 678,
+          "x2": 3775,
+          "y2": 5034,
+          "w": 3267,
+          "h": 4356
+        },
+        "crop_scale_ratio": 0.7628,
+        "resized_to_original": true
+      }
+    },
+    {
+      "key": "03_horizontal_flip",
+      "title": "2.2 Horizontal Flip",
+      "output_file": "C:\\Users\\DELL\\Downloads\\CNNs\\parcel-box-counter\\tools\\output_test\\03_horizontal_flip.jpg",
+      "metadata": {
+        "operation": "horizontal_flip",
+        "flip_code": 1
+      }
+    },
+    {
+      "key": "04_brightness_plus_25",
+      "title": "2.3 Brightness +25%",
+      "output_file": "C:\\Users\\DELL\\Downloads\\CNNs\\parcel-box-counter\\tools\\output_test\\04_brightness_plus_25.jpg",
+      "metadata": {
+        "operation": "brightness_+25%",
+        "factor": 1.25,
+        "percent_change": 25
+      }
+    },
+    {
+      "key": "05_brightness_minus_25",
+      "title": "2.3 Brightness -25%",
+      "output_file": "C:\\Users\\DELL\\Downloads\\CNNs\\parcel-box-counter\\tools\\output_test\\05_brightness_minus_25.jpg",
+      "metadata": {
+        "operation": "brightness_-25%",
+        "factor": 0.75,
+        "percent_change": -25
+      }
+    },
+    {
+      "key": "06_contrast_plus_25",
+      "title": "2.4 Contrast +25%",
+      "output_file": "C:\\Users\\DELL\\Downloads\\CNNs\\parcel-box-counter\\tools\\output_test\\06_contrast_plus_25.jpg",
+      "metadata": {
+        "operation": "contrast_+25%",
+        "factor": 1.25,
+        "percent_change": 25
+      }
+    },
+    {
+      "key": "07_contrast_minus_25",
+      "title": "2.4 Contrast -25%",
+      "output_file": "C:\\Users\\DELL\\Downloads\\CNNs\\parcel-box-counter\\tools\\output_test\\07_contrast_minus_25.jpg",
+      "metadata": {
+        "operation": "contrast_-25%",
+        "factor": 0.75,
+        "percent_change": -25
+      }
+    },
+    {
+      "key": "08_shear_x_plus_10",
+      "title": "2.5 Shear X +10% (Cropped)",
+      "output_file": "C:\\Users\\DELL\\Downloads\\CNNs\\parcel-box-counter\\tools\\output_test\\08_shear_x_plus_10.jpg",
+      "metadata": {
+        "operation": "shear_x_+10%",
+        "shear_factor": 0.1,
+        "crop_box": {
+          "x1": 286,
+          "y1": 381,
+          "x2": 3998,
+          "y2": 5331,
+          "w": 3712,
+          "h": 4950
+        },
+        "crop_scale_ratio": 0.8667,
+        "resized_to_original": true
+      }
+    },
+    {
+      "key": "09_shear_x_minus_10",
+      "title": "2.5 Shear X -10% (Cropped)",
+      "output_file": "C:\\Users\\DELL\\Downloads\\CNNs\\parcel-box-counter\\tools\\output_test\\09_shear_x_minus_10.jpg",
+      "metadata": {
+        "operation": "shear_x_-10%",
+        "shear_factor": -0.1,
+        "crop_box": {
+          "x1": 286,
+          "y1": 381,
+          "x2": 3998,
+          "y2": 5331,
+          "w": 3712,
+          "h": 4950
+        },
+        "crop_scale_ratio": 0.8667,
+        "resized_to_original": true
+      }
+    },
+    {
+      "key": "10_shear_y_plus_10",
+      "title": "2.6 Shear Y +10% (Cropped)",
+      "output_file": "C:\\Users\\DELL\\Downloads\\CNNs\\parcel-box-counter\\tools\\output_test\\10_shear_y_plus_10.jpg",
+      "metadata": {
+        "operation": "shear_y_+10%",
+        "shear_factor": 0.1,
+        "crop_box": {
+          "x1": 161,
+          "y1": 214,
+          "x2": 4123,
+          "y2": 5497,
+          "w": 3962,
+          "h": 5283
+        },
+        "crop_scale_ratio": 0.925,
+        "resized_to_original": true
+      }
+    },
+    {
+      "key": "11_shear_y_minus_10",
+      "title": "2.6 Shear Y -10% (Cropped)",
+      "output_file": "C:\\Users\\DELL\\Downloads\\CNNs\\parcel-box-counter\\tools\\output_test\\11_shear_y_minus_10.jpg",
+      "metadata": {
+        "operation": "shear_y_-10%",
+        "shear_factor": -0.1,
+        "crop_box": {
+          "x1": 161,
+          "y1": 214,
+          "x2": 4123,
+          "y2": 5497,
+          "w": 3962,
+          "h": 5283
+        },
+        "crop_scale_ratio": 0.925,
+        "resized_to_original": true
+      }
+    }
+  ],
+  "saved_files": {
+    "00_original": "C:\\Users\\DELL\\Downloads\\CNNs\\parcel-box-counter\\tools\\output_test\\00_original.jpg",
+    "01_rotate_plus_15": "C:\\Users\\DELL\\Downloads\\CNNs\\parcel-box-counter\\tools\\output_test\\01_rotate_plus_15.jpg",
+    "02_rotate_minus_15": "C:\\Users\\DELL\\Downloads\\CNNs\\parcel-box-counter\\tools\\output_test\\02_rotate_minus_15.jpg",
+    "03_horizontal_flip": "C:\\Users\\DELL\\Downloads\\CNNs\\parcel-box-counter\\tools\\output_test\\03_horizontal_flip.jpg",
+    "04_brightness_plus_25": "C:\\Users\\DELL\\Downloads\\CNNs\\parcel-box-counter\\tools\\output_test\\04_brightness_plus_25.jpg",
+    "05_brightness_minus_25": "C:\\Users\\DELL\\Downloads\\CNNs\\parcel-box-counter\\tools\\output_test\\05_brightness_minus_25.jpg",
+    "06_contrast_plus_25": "C:\\Users\\DELL\\Downloads\\CNNs\\parcel-box-counter\\tools\\output_test\\06_contrast_plus_25.jpg",
+    "07_contrast_minus_25": "C:\\Users\\DELL\\Downloads\\CNNs\\parcel-box-counter\\tools\\output_test\\07_contrast_minus_25.jpg",
+    "08_shear_x_plus_10": "C:\\Users\\DELL\\Downloads\\CNNs\\parcel-box-counter\\tools\\output_test\\08_shear_x_plus_10.jpg",
+    "09_shear_x_minus_10": "C:\\Users\\DELL\\Downloads\\CNNs\\parcel-box-counter\\tools\\output_test\\09_shear_x_minus_10.jpg",
+    "10_shear_y_plus_10": "C:\\Users\\DELL\\Downloads\\CNNs\\parcel-box-counter\\tools\\output_test\\10_shear_y_plus_10.jpg",
+    "11_shear_y_minus_10": "C:\\Users\\DELL\\Downloads\\CNNs\\parcel-box-counter\\tools\\output_test\\11_shear_y_minus_10.jpg",
+    "summary_grid": "C:\\Users\\DELL\\Downloads\\CNNs\\parcel-box-counter\\tools\\output_test\\summary_augmentation_grid.jpg"
+  }
+}
