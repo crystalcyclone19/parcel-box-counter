@@ -1,19 +1,27 @@
 # model/run_auto_train.py
 """
-Main Entry Point: Automated Training & Model Selection
-=======================================================
+Main Entry Point: Multi-class Classification — Automated Training & Model Selection
+=====================================================================================
 รันกระบวนการทั้งหมดตั้งแต่โหลดข้อมูลจนบันทึก Champion Model ด้วยคำสั่งเดียว
 
 การใช้งาน:
   python model/run_auto_train.py \\
       --images-dir dataset/boxes \\
       --labels dataset/labels.csv \\
-      --output-dir model/trained_models \\
-      --k 10.0
+      --output-dir model/trained_models
+
+  # หรือใช้ Quick Mode (Search Space เล็กกว่า, เทรนเร็ว):
+  python model/run_auto_train.py \\
+      --images-dir dataset/boxes \\
+      --labels dataset/labels.csv \\
+      --clip-percentiles 98.0 \\
+      --learning-rates 0.005 0.01 \\
+      --batch-sizes 16 \\
+      --hidden-dims 64
 
 สภาพแวดล้อมที่รองรับ:
   - Windows (Local)
-  - Google Colab (Free Tier) — ใช้เวลาประมาณ 1.5-3 นาที
+  - Google Colab (Free Tier)
 """
 
 from __future__ import annotations
@@ -23,7 +31,6 @@ import sys
 import time
 from pathlib import Path
 
-# Enable UTF-8 for console output on Windows
 if sys.platform == "win32":
     try:
         sys.stdout.reconfigure(encoding="utf-8")
@@ -48,7 +55,7 @@ for _p in [str(_TRAINING_DIR), str(_PREPROCESSING_DIR)]:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="run_auto_train",
-        description="Parcel Box Counter — Automated Training & Model Selection",
+        description="Parcel Box Counter — Multi-class Classification Training",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
@@ -73,24 +80,24 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Session name (default: session_<timestamp>)",
     )
 
-    # ── Model Parameters (Fixed by Owner) ─────────────────────────────────────
-    parser.add_argument(
-        "--k", type=float, default=10.0,
-        help="Scaled Sigmoid Max (ceiling of expected box count)",
-    )
-
     # ── Dataset Split ─────────────────────────────────────────────────────────
     parser.add_argument(
         "--train-ratio", type=float, default=0.70,
-        help="Fraction of data for training (default: 0.70)",
+        help="Fraction of data for training",
     )
     parser.add_argument(
         "--val-ratio", type=float, default=0.15,
-        help="Fraction of data for validation (default: 0.15)",
+        help="Fraction of data for validation",
     )
     parser.add_argument(
         "--seed", type=int, default=42,
         help="Random seed for reproducibility",
+    )
+
+    # ── Model Parameters ─────────────────────────────────────────────────────
+    parser.add_argument(
+        "--n-classes", type=int, default=9,
+        help="จำนวนคลาส (จำนวนกล่องสูงสุด, default: 9)",
     )
 
     # ── Search Space Override (Optional) ─────────────────────────────────────
@@ -101,26 +108,31 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--learning-rates", type=float, nargs="+",
-        default=[0.001, 0.005, 0.01, 0.05, 0.1],
+        default=[0.001, 0.005, 0.01, 0.05],
         help="learning_rate values to search",
     )
     parser.add_argument(
         "--batch-sizes", type=int, nargs="+",
-        default=[4, 8, 16, 32],
+        default=[8, 16, 32],
         help="batch_size values to search",
+    )
+    parser.add_argument(
+        "--hidden-dims", type=int, nargs="+",
+        default=[32, 64, 128],
+        help="hidden_dim values for MLP hidden layer",
     )
 
     # ── Primary Metric ────────────────────────────────────────────────────────
     parser.add_argument(
-        "--metric", type=str, default="mse",
-        choices=["mse", "mae", "r2", "acc_within_1"],
+        "--metric", type=str, default="cross_entropy",
+        choices=["cross_entropy", "acc_exact", "acc_within_1", "macro_f1"],
         help="Primary metric for champion model selection",
     )
 
-    # ── Augmentation Options ──────────────────────────────────────────────────
+    # ── Augmentation ──────────────────────────────────────────────────────────
     parser.add_argument(
         "--no-augment", action="store_true",
-        help="ปิดการทำ Data Augmentation บน Train Set (ค่าเริ่มต้น: เปิด Augmentation 11 รูปแบบสำหรับ Train Set เสมอ)",
+        help="ปิดการทำ Data Augmentation บน Train Set",
     )
 
     return parser
@@ -141,13 +153,15 @@ def run_auto_train(args: argparse.Namespace) -> None:
     augment_train = not args.no_augment
 
     # ── Stage 1: Load & Split Dataset ─────────────────────────────────────────
-    print(f"\n{'='*70}")
-    print(f"  PARCEL BOX COUNTER — AUTOMATED TRAINING & MODEL SELECTION")
-    print(f"{'='*70}")
+    print(f"\n{'='*75}")
+    print(f"  PARCEL BOX COUNTER — MULTI-CLASS CLASSIFICATION TRAINING")
+    print(f"{'='*75}")
     print(f"\n[Stage 1] Loading data & splitting...")
-    print(f"  • Data Augmentation (Train) : {'ENABLED (11x independent variants: rot+-15°, flip, bright/contrast+-25%, shear x/y+-10%)' if augment_train else 'DISABLED'}")
-    print(f"  • Data Augmentation (Val)   : DISABLED (Strictly un-augmented raw data)")
-    print(f"  • Data Augmentation (Test)  : DISABLED (Strictly un-augmented raw data)")
+    print(f"  • Model Type             : Multi-class Classification (กล่อง 1–{args.n_classes})")
+    print(f"  • Feature Vector         : SVD(64) + StatFeatures(3) = 67 dims")
+    print(f"  • Data Augmentation (Train) : {'ENABLED (9x independent variants)' if augment_train else 'DISABLED'}")
+    print(f"  • Data Augmentation (Val)   : DISABLED")
+    print(f"  • Data Augmentation (Test)  : DISABLED")
 
     dataset = load_dataset(
         images_dir=args.images_dir,
@@ -165,14 +179,15 @@ def run_auto_train(args: argparse.Namespace) -> None:
         clip_percentile=args.clip_percentiles,
         learning_rate=args.learning_rates,
         batch_size=args.batch_sizes,
+        hidden_dim=args.hidden_dims,
     )
     evaluator = Evaluator(primary_metric=args.metric)
 
     tuner = GridSearchTuner(
         split=split,
-        k=args.k,
         search_space=search_space,
         evaluator=evaluator,
+        n_classes=args.n_classes,
         random_seed=args.seed,
         augment_train=augment_train,
     )
@@ -193,16 +208,21 @@ def run_auto_train(args: argparse.Namespace) -> None:
     # ── Summary ───────────────────────────────────────────────────────────────
     total_elapsed = time.time() - total_start
     best = tuner.best_trial
-    print(f"\n{'='*70}")
+    vm = best.val_metrics
+
+    print(f"\n{'='*75}")
     print(f"  SELECTION SUMMARY & TEST SET VERIFICATION")
-    print(f"{'='*70}")
+    print(f"{'='*75}")
     print(f"  🏆 Champion Model: Trial {best.trial_id}")
-    print(f"     Clip={best.clip_percentile:.0f}%, LR={best.learning_rate}, Batch={best.batch_size}")
-    print(f"     Val MSE: {best.val_mse:.4f} | Val MAE: {best.val_mae:.4f} กล่อง")
+    print(f"     Clip={best.clip_percentile:.0f}%, LR={best.learning_rate}, "
+          f"Batch={best.batch_size}, Hidden={best.hidden_dim}")
+    print(f"     Val CE: {best.val_ce:.4f} | "
+          f"Val Acc: {vm.acc_exact*100:.1f}% | "
+          f"Val F1: {vm.macro_f1:.3f}" if vm else "")
     print(f"     Best Epoch: {best.train_result.best_epoch} / {best.train_result.total_epochs_run}")
     print(f"\n  ✓ Exported to: {session_dir}")
     print(f"  ⏱ Total time: {total_elapsed:.1f}s")
-    print(f"{'='*70}\n")
+    print(f"{'='*75}\n")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -213,7 +233,6 @@ if __name__ == "__main__":
     parser = _build_parser()
     args = parser.parse_args()
 
-    # ── Validate paths ────────────────────────────────────────────────────────
     if not args.images_dir.exists():
         print(f"[ERROR] ไม่พบโฟลเดอร์ภาพ: {args.images_dir}")
         sys.exit(1)

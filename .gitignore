@@ -2,3 +2,5 @@
 dataset/
 __pycache__/
 _compare_edge_detectors.py
+model/trained_models/
+documents/math_manual_calculation.md
